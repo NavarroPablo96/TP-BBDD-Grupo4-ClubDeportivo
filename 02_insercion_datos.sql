@@ -9,11 +9,12 @@ DELETE FROM CUOTA_SOCIAL;
 DELETE FROM GRUPO_FAMILIAR;
 GO
 
-DBCC CHECKIDENT ('GRUPO_FAMILIAR', RESEED, 0);
+-- Sin DBCC CHECKIDENT: con RESEED 0 la primera fila queda con nro_socio_base = 0
+-- y los SOCIO (que referencian 1..5) fallan la FK. Se asume base recreada por 00.
 GO
 
 
-INSERT INTO CATEGORIA (nombre_categoria, porcentaje_mod_couta)
+INSERT INTO CATEGORIA (nombre_categoria, porcentaje_mod_cuota)
 VALUES
     ('Infantil', -30.00),
     ('Juvenil', -15.00),

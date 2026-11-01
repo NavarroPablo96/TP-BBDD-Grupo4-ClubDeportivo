@@ -2,7 +2,7 @@
 
 ## TODO 1: Definir los valores permitidos de `meses_por_cuota`
 
-**Estado:** pendiente de revisión con el grupo.
+**Estado:** lista cerrada aplicada en `01_creacion_tablas.sql` por decisión del usuario (`IN (1, 2, 3, 6, 12)`). Pendiente de confirmación del grupo.
 
 **Tabla:** `ACTIVIDAD_ARANCELADA`.
 
