@@ -2,16 +2,21 @@ USE ClubDeportivo;
 GO
 
 -- Eliminar las tablas si ya existen
-DROP TABLE IF EXISTS SOCIO;
-DROP TABLE IF EXISTS CATEGORIA;
-DROP TABLE IF EXISTS VALOR_CUOTA_SOCIAL;
-DROP TABLE IF EXISTS CUOTA_SOCIAL;
-DROP TABLE IF EXISTS GRUPO_FAMILIAR;
-DROP TABLE IF EXISTS ACTIVIDAD;
-DROP TABLE IF EXISTS ACTIVIDAD_ARANCELADA;
-DROP TABLE IF EXISTS ACTIVIDAD_GRATUITA;
-DROP TABLE IF EXISTS HABILITADA_PARA;
+DROP TABLE IF EXISTS DICTADO;
+DROP TABLE IF EXISTS APTA_PARA;
+DROP TABLE IF EXISTS PUEDE_DESEMPENIARSE_EN;
+DROP TABLE IF EXISTS AREA;
+DROP TABLE IF EXISTS PROFESIONAL;
 DROP TABLE IF EXISTS INSCRIPCION;
+DROP TABLE IF EXISTS HABILITADA_PARA;
+DROP TABLE IF EXISTS ACTIVIDAD_GRATUITA;
+DROP TABLE IF EXISTS ACTIVIDAD_ARANCELADA;
+DROP TABLE IF EXISTS ACTIVIDAD;
+DROP TABLE IF EXISTS CUOTA_SOCIAL;
+DROP TABLE IF EXISTS SOCIO;
+DROP TABLE IF EXISTS GRUPO_FAMILIAR;
+DROP TABLE IF EXISTS VALOR_CUOTA_SOCIAL;
+DROP TABLE IF EXISTS CATEGORIA;
 GO
 
 
@@ -19,7 +24,7 @@ GO
 -- PK = CK = {nombre_categoria}
 CREATE TABLE CATEGORIA(
     nombre_categoria VARCHAR(30),
-    porcentaje_mod_couta DECIMAL(5,2),
+    porcentaje_mod_cuota DECIMAL(5,2),
 
     -- Clave Primaria
     CONSTRAINT PK_CATEGORIA PRIMARY KEY(nombre_categoria)
@@ -72,7 +77,11 @@ CREATE TABLE VALOR_CUOTA_SOCIAL(
     monto_base DECIMAL(15,2) NOT NULL,
 
     --Clave Primaria
-    CONSTRAINT PK_VALOR_CUOTA_SOCIAL PRIMARY KEY(fecha_desde)
+    CONSTRAINT PK_VALOR_CUOTA_SOCIAL PRIMARY KEY(fecha_desde),
+
+    -- Validación de vigencia: fecha_hasta, si existe, no puede ser anterior a fecha_desde
+    CONSTRAINT CK_VALOR_CUOTA_SOCIAL_FECHAS
+        CHECK (fecha_hasta IS NULL OR fecha_hasta >= fecha_desde)
 );
 GO
 
@@ -104,7 +113,11 @@ CREATE TABLE CUOTA_SOCIAL(
         CHECK (
             monto_a_pagar >= 0
             AND monto_abonado >= 0
-        )
+        ),
+
+    -- §4.2: el monto abonado no supera el monto a pagar (NULL = cuota sin pagos)
+    CONSTRAINT CK_CUOTA_SOCIAL_ABONADO
+        CHECK (monto_abonado IS NULL OR monto_abonado <= monto_a_pagar)
 
 );
 GO
@@ -146,10 +159,9 @@ CREATE TABLE ACTIVIDAD_ARANCELADA(
     CONSTRAINT CK_ACTIVIDAD_ARANCELADA_ARANCEL
         CHECK (arancel >= 0),
 
-    -- Verificación de meses por cuota
-    -- TODO: acordar que periodicidadades se admiten.
+    -- Verificación de meses por cuota (periodicidades admitidas: decisión del usuario, ver pendientes_diseno.md TODO 1)
     CONSTRAINT CK_ACTIVIDAD_ARANCELADA_MESES_POR_CUOTA
-        CHECK (meses_por_cuota > 0),
+        CHECK (meses_por_cuota IN (1, 2, 3, 6, 12))
 );
 GO
 
@@ -165,7 +177,7 @@ CREATE TABLE ACTIVIDAD_GRATUITA(
     -- Clave foránea
     CONSTRAINT FK_ACTIVIDAD_GRATUITA
         FOREIGN KEY (cod_actividad)
-        REFERENCES ACTIVIDAD(cod_actividad),
+        REFERENCES ACTIVIDAD(cod_actividad)
 );
 GO
 
@@ -184,7 +196,7 @@ CREATE TABLE HABILITADA_PARA(
 
     CONSTRAINT FK_HABILITADA_PARA_CATEGORIA
         FOREIGN KEY (nombre_categoria)
-        REFERENCES CATEGORIA(nombre_categoria),
+        REFERENCES CATEGORIA(nombre_categoria)
 );
 GO
 
@@ -206,5 +218,103 @@ CREATE TABLE INSCRIPCION(
     CONSTRAINT FK_INSCRIPCION_ACTIVIDAD
         FOREIGN KEY (cod_actividad)
         REFERENCES ACTIVIDAD(cod_actividad)
+);
+GO
+
+-- PROFESIONAL (dni, nombre, domicilio, telefono, titulo)
+-- PK = CK = {dni}
+CREATE TABLE PROFESIONAL(
+    dni INT NOT NULL,
+    nombre VARCHAR(50) NOT NULL,
+    domicilio VARCHAR(100) NOT NULL,
+    telefono VARCHAR(20) NOT NULL,
+    titulo VARCHAR(50) NOT NULL,
+
+    -- Clave primaria
+    CONSTRAINT PK_PROFESIONAL PRIMARY KEY (dni),
+
+    -- Validación DNI (supuesto: numérico positivo)
+    CONSTRAINT CK_PROFESIONAL_DNI CHECK (dni > 0)
+);
+GO
+
+-- AREA (cod_area, ubicacion, capacidad, estado_mantenimiento)
+-- PK = CK = {cod_area}
+CREATE TABLE AREA(
+    cod_area INT NOT NULL,
+    ubicacion VARCHAR(100) NOT NULL,
+    capacidad INT NOT NULL,
+    -- TODO: definir dominio de estado_mantenimiento (no especificado en el enunciado).
+    estado_mantenimiento VARCHAR(30) NOT NULL,
+
+    -- Clave primaria
+    CONSTRAINT PK_AREA PRIMARY KEY (cod_area),
+
+    -- Validación capacidad (supuesto: no negativa)
+    CONSTRAINT CK_AREA_CAPACIDAD CHECK (capacidad >= 0)
+);
+GO
+
+-- PUEDE_DESEMPENIARSE_EN (dni, cod_actividad)
+-- PK = CK = {(dni, cod_actividad)} FK = {dni, cod_actividad}
+CREATE TABLE PUEDE_DESEMPENIARSE_EN(
+    dni INT NOT NULL,
+    cod_actividad INT NOT NULL,
+
+    CONSTRAINT PK_PUEDE_DESEMPENIARSE_EN
+        PRIMARY KEY (dni, cod_actividad),
+
+    CONSTRAINT FK_PUEDE_DESEMPENIARSE_EN_PROFESIONAL
+        FOREIGN KEY (dni)
+        REFERENCES PROFESIONAL(dni),
+
+    CONSTRAINT FK_PUEDE_DESEMPENIARSE_EN_ACTIVIDAD
+        FOREIGN KEY (cod_actividad)
+        REFERENCES ACTIVIDAD(cod_actividad)
+);
+GO
+
+-- APTA_PARA (cod_area, cod_actividad)
+-- PK = CK = {(cod_area, cod_actividad)} FK = {cod_area, cod_actividad}
+CREATE TABLE APTA_PARA(
+    cod_area INT NOT NULL,
+    cod_actividad INT NOT NULL,
+
+    CONSTRAINT PK_APTA_PARA
+        PRIMARY KEY (cod_area, cod_actividad),
+
+    CONSTRAINT FK_APTA_PARA_AREA
+        FOREIGN KEY (cod_area)
+        REFERENCES AREA(cod_area),
+
+    CONSTRAINT FK_APTA_PARA_ACTIVIDAD
+        FOREIGN KEY (cod_actividad)
+        REFERENCES ACTIVIDAD(cod_actividad)
+);
+GO
+
+-- DICTADO (cod_dictado, fecha_desde, fecha_fin, hora_inicio, hora_fin, cod_actividad)
+-- PK = CK = {cod_dictado} FK = {cod_actividad}
+CREATE TABLE DICTADO(
+    cod_dictado INT IDENTITY(1,1) NOT NULL,
+    fecha_desde DATE NOT NULL,
+    fecha_fin DATE NOT NULL,
+    hora_inicio TIME NOT NULL,
+    hora_fin TIME NOT NULL,
+    cod_actividad INT NOT NULL,
+
+    CONSTRAINT PK_DICTADO
+        PRIMARY KEY (cod_dictado),
+
+    CONSTRAINT FK_DICTADO_ACTIVIDAD
+        FOREIGN KEY (cod_actividad)
+        REFERENCES ACTIVIDAD(cod_actividad),
+
+    -- §4.2: fecha_desde <= fecha_fin y hora_inicio < hora_fin
+    CONSTRAINT CK_DICTADO_FECHAS
+        CHECK (fecha_desde <= fecha_fin),
+
+    CONSTRAINT CK_DICTADO_HORARIO
+        CHECK (hora_inicio < hora_fin)
 );
 GO

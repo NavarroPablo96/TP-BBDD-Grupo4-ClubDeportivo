@@ -9,8 +9,17 @@
     - https://learn.microsoft.com/es-es/ssms/install/install?redirectedfrom=MSDN
 
 
+### Estructura del repositorio
+- `scripts/`: scripts T-SQL, en orden de ejecución (`00` a `04`).
+- `docs/`: resolución del grupo, pendientes de diseño y spec de estado (`SPEC_ESTADO.md`).
+- `docs/referencias/`: enunciado, apunte de la cátedra y bibliografía.
+
 ### Ejecución
-1. Ejecutar 00_creacion_bd.sql.
-2. Ejecutar 01_creacion_tablas.sql.
+Ejecutar en orden, desde SSMS o con `sqlcmd` desde la raíz del repo:
+1. `scripts/00_creacion_bd.sql`
+2. `scripts/01_creacion_tablas.sql`
+3. `scripts/02_insercion_datos.sql`
+4. `scripts/03_logica_socios_cuotas.sql`
+5. `scripts/04_datos_logica_socios_cuotas.sql`
 
 Nota: el primer script elimina y vuelve a crear la base de datos ClubDeportivo si ya existe.
