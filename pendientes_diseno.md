@@ -41,3 +41,17 @@ Si se garantiza la coherencia del tipo en ambas subentidades, también se garant
 **Alternativas a evaluar:** triggers para la coherencia y procedimientos almacenados con transacciones y permisos controlados para las altas, bajas y modificaciones; o una modificación del diseño.
 
 **Decisión del grupo:** pendiente.
+
+## TODO 3: Definir dominio de `AREA.estado_mantenimiento`
+
+**Estado:** pendiente. Hoy es `VARCHAR(30) NOT NULL` sin valores permitidos, porque el enunciado no los define.
+
+- [ ] Acordar la lista de estados y reemplazar el tipo libre por un `CHECK` o una tabla de dominio.
+
+## TODO 4: Validar supuestos de tipos de `PROFESIONAL` y `AREA`
+
+**Estado:** supuestos aplicados en `01_creacion_tablas.sql`, sin confirmar con el equipo.
+
+- [ ] `PROFESIONAL.dni` como `INT` con `CHECK (dni > 0)`.
+- [ ] `AREA.capacidad` con `CHECK (capacidad >= 0)`.
+- [ ] `AREA.cod_area` como `INT` manual, sin `IDENTITY`.

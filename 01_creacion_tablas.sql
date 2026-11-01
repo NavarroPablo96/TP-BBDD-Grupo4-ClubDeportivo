@@ -2,6 +2,11 @@ USE ClubDeportivo;
 GO
 
 -- Eliminar las tablas si ya existen
+DROP TABLE IF EXISTS DICTADO;
+DROP TABLE IF EXISTS APTA_PARA;
+DROP TABLE IF EXISTS PUEDE_DESEMPENIARSE_EN;
+DROP TABLE IF EXISTS AREA;
+DROP TABLE IF EXISTS PROFESIONAL;
 DROP TABLE IF EXISTS INSCRIPCION;
 DROP TABLE IF EXISTS HABILITADA_PARA;
 DROP TABLE IF EXISTS ACTIVIDAD_GRATUITA;
@@ -205,5 +210,103 @@ CREATE TABLE INSCRIPCION(
     CONSTRAINT FK_INSCRIPCION_ACTIVIDAD
         FOREIGN KEY (cod_actividad)
         REFERENCES ACTIVIDAD(cod_actividad)
+);
+GO
+
+-- PROFESIONAL (dni, nombre, domicilio, telefono, titulo)
+-- PK = CK = {dni}
+CREATE TABLE PROFESIONAL(
+    dni INT NOT NULL,
+    nombre VARCHAR(50) NOT NULL,
+    domicilio VARCHAR(100) NOT NULL,
+    telefono VARCHAR(20) NOT NULL,
+    titulo VARCHAR(50) NOT NULL,
+
+    -- Clave primaria
+    CONSTRAINT PK_PROFESIONAL PRIMARY KEY (dni),
+
+    -- Validación DNI (supuesto: numérico positivo)
+    CONSTRAINT CK_PROFESIONAL_DNI CHECK (dni > 0)
+);
+GO
+
+-- AREA (cod_area, ubicacion, capacidad, estado_mantenimiento)
+-- PK = CK = {cod_area}
+CREATE TABLE AREA(
+    cod_area INT NOT NULL,
+    ubicacion VARCHAR(100) NOT NULL,
+    capacidad INT NOT NULL,
+    -- TODO: definir dominio de estado_mantenimiento (no especificado en el enunciado).
+    estado_mantenimiento VARCHAR(30) NOT NULL,
+
+    -- Clave primaria
+    CONSTRAINT PK_AREA PRIMARY KEY (cod_area),
+
+    -- Validación capacidad (supuesto: no negativa)
+    CONSTRAINT CK_AREA_CAPACIDAD CHECK (capacidad >= 0)
+);
+GO
+
+-- PUEDE_DESEMPENIARSE_EN (dni, cod_actividad)
+-- PK = CK = {(dni, cod_actividad)} FK = {dni, cod_actividad}
+CREATE TABLE PUEDE_DESEMPENIARSE_EN(
+    dni INT NOT NULL,
+    cod_actividad INT NOT NULL,
+
+    CONSTRAINT PK_PUEDE_DESEMPENIARSE_EN
+        PRIMARY KEY (dni, cod_actividad),
+
+    CONSTRAINT FK_PUEDE_DESEMPENIARSE_EN_PROFESIONAL
+        FOREIGN KEY (dni)
+        REFERENCES PROFESIONAL(dni),
+
+    CONSTRAINT FK_PUEDE_DESEMPENIARSE_EN_ACTIVIDAD
+        FOREIGN KEY (cod_actividad)
+        REFERENCES ACTIVIDAD(cod_actividad)
+);
+GO
+
+-- APTA_PARA (cod_area, cod_actividad)
+-- PK = CK = {(cod_area, cod_actividad)} FK = {cod_area, cod_actividad}
+CREATE TABLE APTA_PARA(
+    cod_area INT NOT NULL,
+    cod_actividad INT NOT NULL,
+
+    CONSTRAINT PK_APTA_PARA
+        PRIMARY KEY (cod_area, cod_actividad),
+
+    CONSTRAINT FK_APTA_PARA_AREA
+        FOREIGN KEY (cod_area)
+        REFERENCES AREA(cod_area),
+
+    CONSTRAINT FK_APTA_PARA_ACTIVIDAD
+        FOREIGN KEY (cod_actividad)
+        REFERENCES ACTIVIDAD(cod_actividad)
+);
+GO
+
+-- DICTADO (cod_dictado, fecha_desde, fecha_fin, hora_inicio, hora_fin, cod_actividad)
+-- PK = CK = {cod_dictado} FK = {cod_actividad}
+CREATE TABLE DICTADO(
+    cod_dictado INT IDENTITY(1,1) NOT NULL,
+    fecha_desde DATE NOT NULL,
+    fecha_fin DATE NOT NULL,
+    hora_inicio TIME NOT NULL,
+    hora_fin TIME NOT NULL,
+    cod_actividad INT NOT NULL,
+
+    CONSTRAINT PK_DICTADO
+        PRIMARY KEY (cod_dictado),
+
+    CONSTRAINT FK_DICTADO_ACTIVIDAD
+        FOREIGN KEY (cod_actividad)
+        REFERENCES ACTIVIDAD(cod_actividad),
+
+    -- §4.2: fecha_desde <= fecha_fin y hora_inicio < hora_fin
+    CONSTRAINT CK_DICTADO_FECHAS
+        CHECK (fecha_desde <= fecha_fin),
+
+    CONSTRAINT CK_DICTADO_HORARIO
+        CHECK (hora_inicio < hora_fin)
 );
 GO
