@@ -77,7 +77,11 @@ CREATE TABLE VALOR_CUOTA_SOCIAL(
     monto_base DECIMAL(15,2) NOT NULL,
 
     --Clave Primaria
-    CONSTRAINT PK_VALOR_CUOTA_SOCIAL PRIMARY KEY(fecha_desde)
+    CONSTRAINT PK_VALOR_CUOTA_SOCIAL PRIMARY KEY(fecha_desde),
+
+    -- Validación de vigencia: fecha_hasta, si existe, no puede ser anterior a fecha_desde
+    CONSTRAINT CK_VALOR_CUOTA_SOCIAL_FECHAS
+        CHECK (fecha_hasta IS NULL OR fecha_hasta >= fecha_desde)
 );
 GO
 
@@ -109,7 +113,11 @@ CREATE TABLE CUOTA_SOCIAL(
         CHECK (
             monto_a_pagar >= 0
             AND monto_abonado >= 0
-        )
+        ),
+
+    -- §4.2: el monto abonado no supera el monto a pagar (NULL = cuota sin pagos)
+    CONSTRAINT CK_CUOTA_SOCIAL_ABONADO
+        CHECK (monto_abonado IS NULL OR monto_abonado <= monto_a_pagar)
 
 );
 GO
