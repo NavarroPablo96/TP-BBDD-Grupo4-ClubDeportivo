@@ -8,7 +8,7 @@ Diseño e implementación en **SQL Server (T-SQL)** de la base de datos de un cl
 
 ## 2. Cómo correr los scripts
 
-Orden obligatorio (cada uno depende del anterior):
+Orden obligatorio (cada uno depende del anterior). Los scripts están en `scripts/`:
 
 | Script | Qué hace |
 |---|---|
@@ -20,8 +20,10 @@ Orden obligatorio (cada uno depende del anterior):
 
 Comando (LocalDB, autenticación de Windows):
 
+Desde la raíz del repo:
+
 ```bash
-sqlcmd -S "(localdb)\MSSQLLocalDB" -E -b -i 00_creacion_bd.sql -i 01_creacion_tablas.sql -i 02_insercion_datos.sql -i 03_logica_socios_cuotas.sql -i 04_datos_logica_socios_cuotas.sql
+sqlcmd -S "(localdb)\MSSQLLocalDB" -E -b -i scripts/00_creacion_bd.sql -i scripts/01_creacion_tablas.sql -i scripts/02_insercion_datos.sql -i scripts/03_logica_socios_cuotas.sql -i scripts/04_datos_logica_socios_cuotas.sql
 ```
 
 Connection string para SSMS / clientes (LocalDB):
@@ -30,7 +32,7 @@ Connection string para SSMS / clientes (LocalDB):
 Data Source=(localdb)\MSSQLLocalDB;Integrated Security=True;Persist Security Info=False;Pooling=False;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Application Name="SQL Server Management Studio";Command Timeout=0
 ```
 
-Nota: `CLAUDE.md` §2 indica `-S localhost`, pero en esta máquina la instancia es `(localdb)\MSSQLLocalDB`. Ese comando con `localhost` no conecta.
+Nota: con `-S localhost` no conecta en esta máquina; la instancia es `(localdb)\MSSQLLocalDB`.
 
 ## 3. Estado: qué está hecho
 
