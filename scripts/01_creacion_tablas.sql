@@ -2,6 +2,10 @@ USE ClubDeportivo;
 GO
 
 -- Eliminar las tablas si ya existen
+DROP TABLE IF EXISTS CUOTA_ARANCEL;
+DROP TABLE IF EXISTS SE_DESARROLLA_EN;
+DROP TABLE IF EXISTS A_CARGO_DE;
+DROP TABLE IF EXISTS DICTADO_DIA;
 DROP TABLE IF EXISTS DICTADO;
 DROP TABLE IF EXISTS APTA_PARA;
 DROP TABLE IF EXISTS PUEDE_DESEMPENIARSE_EN;
@@ -316,5 +320,110 @@ CREATE TABLE DICTADO(
 
     CONSTRAINT CK_DICTADO_HORARIO
         CHECK (hora_inicio < hora_fin)
+);
+GO
+
+-- DICTADO_DIA (cod_dictado, dia_semana)
+-- PK = CK = {(cod_dictado, dia_semana)} FK = {cod_dictado}
+CREATE TABLE DICTADO_DIA(
+    cod_dictado INT NOT NULL,
+    dia_semana INT NOT NULL,
+
+    -- Clave primaria
+    CONSTRAINT PK_DICTADO_DIA
+        PRIMARY KEY (cod_dictado, dia_semana),
+
+    -- Clave foránea
+    CONSTRAINT FK_DICTADO_DIA_DICTADO
+        FOREIGN KEY (cod_dictado)
+        REFERENCES DICTADO(cod_dictado),
+
+    -- Validación del día de la semana
+    CONSTRAINT CK_DICTADO_DIA_SEMANA
+        CHECK (dia_semana BETWEEN 1 AND 7)
+);
+GO
+
+
+-- A_CARGO_DE (cod_dictado, dni)
+-- PK = CK = {(cod_dictado,dni)} FK = {cod_dictado,dni}.
+CREATE TABLE A_CARGO_DE(
+    cod_dictado INT NOT NULL,
+    dni INT NOT NULL,
+
+    -- Clave primaria
+    CONSTRAINT PK_A_CARGO_DE
+        PRIMARY KEY (cod_dictado,dni),
+
+    -- Clave foránea
+    CONSTRAINT FK_A_CARGO_DE_DICTADO
+        FOREIGN KEY (cod_dictado)
+        REFERENCES DICTADO(cod_dictado),
+
+    -- Clave foránea
+    CONSTRAINT FK_A_CARGO_DE_PROFESIONAL
+        FOREIGN KEY (dni)
+        REFERENCES PROFESIONAL(dni)
+);
+GO
+
+
+-- SE_DESARROLLA_EN (cod_dictado, cod_area)
+-- PK = CK = {(cod_dictado,cod_area)} FK = {cod_dictado,cod_area}.
+CREATE TABLE SE_DESARROLLA_EN(
+    cod_dictado INT NOT NULL,
+    cod_area INT NOT NULL,
+
+    -- Clave primaria
+    CONSTRAINT PK_SE_DESARROLLA_EN
+        PRIMARY KEY (cod_dictado,cod_area),
+
+    -- Clave foránea
+    CONSTRAINT FK_SE_DESARROLLA_EN_DICTADO
+        FOREIGN KEY (cod_dictado)
+        REFERENCES DICTADO(cod_dictado),
+
+    -- Clave foránea
+    CONSTRAINT FK_SE_DESARROLLA_EN_AREA
+        FOREIGN KEY (cod_area)
+        REFERENCES AREA(cod_area)
+);
+GO
+
+-- CUOTA ARANCEL esto es la agregación de SE_INSCRIBE
+-- CUOTA_ARANCEL (nro_socio_base, nro_orden, cod_actividad, nro_cuota, monto_a_pagar, fecha_vencimiento, monto_abonado, fecha_pago)
+-- PK = CK = {(nro_socio_base, nro_orden, cod_actividad, nro_cuota)}
+-- FK = {(nro_socio_base, nro_orden, cod_actividad)}
+CREATE TABLE CUOTA_ARANCEL(
+    nro_socio_base INT NOT NULL,
+    nro_orden INT NOT NULL,
+    cod_actividad INT NOT NULL,
+    nro_cuota INT NOT NULL,
+
+    monto_a_pagar DECIMAL(15,2) NOT NULL,
+    fecha_vencimiento DATE NOT NULL,
+    monto_abonado DECIMAL(15,2),
+    fecha_pago DATE,
+
+    -- Clave primaria compuesta
+    CONSTRAINT PK_CUOTA_ARANCEL
+        PRIMARY KEY (nro_socio_base, nro_orden, cod_actividad, nro_cuota),
+
+    -- Clave foránea hacia la agregación INSCRIPCION
+    CONSTRAINT FK_CUOTA_ARANCEL_INSCRIPCION
+        FOREIGN KEY (nro_socio_base,nro_orden,cod_actividad)
+        REFERENCES INSCRIPCION(nro_socio_base,nro_orden,cod_actividad),
+
+    -- Validación del número de cuota
+    CONSTRAINT CK_CUOTA_ARANCEL_NRO_CUOTA
+        CHECK (nro_cuota > 0),
+
+    -- Validación de importes
+    CONSTRAINT CK_CUOTA_ARANCEL_IMPORTES
+        CHECK ( monto_a_pagar >= 0 AND (monto_abonado IS NULL OR monto_abonado >= 0)),
+
+    -- El monto abonado no puede superar el monto a pagar
+    CONSTRAINT CK_CUOTA_ARANCEL_ABONADO
+        CHECK (monto_abonado IS NULL OR monto_abonado <= monto_a_pagar)
 );
 GO
