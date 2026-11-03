@@ -21,5 +21,6 @@ Ejecutar en orden, desde SSMS o con `sqlcmd` desde la raíz del repo:
 3. `scripts/02_insercion_datos.sql`
 4. `scripts/03_logica_socios_cuotas.sql`
 5. `scripts/04_datos_logica_socios_cuotas.sql`
+6. `scripts/05.logica_areas_profesionales.sql`
 
 Nota: el primer script elimina y vuelve a crear la base de datos ClubDeportivo si ya existe.

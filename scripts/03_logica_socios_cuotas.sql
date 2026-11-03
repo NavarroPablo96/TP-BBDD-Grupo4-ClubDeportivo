@@ -84,6 +84,29 @@ BEGIN
     END;
 END;
 GO
+-- TR_CUOTA_ARANCEL_ACTIVIDAD_ARANCELADA
+-- §4.2: Sólo generan cuota de arancel las inscripciones a actividades aranceladas
+CREATE OR ALTER TRIGGER TR_CUOTA_ARANCEL_ACTIVIDAD_ARANCELADA
+ON CUOTA_ARANCEL
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF EXISTS (
+        SELECT 1
+        FROM inserted i
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM ACTIVIDAD_ARANCELADA a
+            WHERE a.cod_actividad = i.cod_actividad
+        )
+    )
+    BEGIN
+        THROW 50004, 'Solo las inscripciones a actividades aranceladas generan cuotas de arancel.', 1;
+    END;
+END;
+GO
 
 
 -- SP_ALTA_GRUPO_FAMILIAR
