@@ -63,7 +63,6 @@ GO
 
 -- TR_SOCIO_TITULAR_CATEGORIA
 -- §4.2: el titular de un grupo no puede pertenecer a la categoría infantiles.
--- TODO: el nombre de la categoría ('Infantil') sigue los datos actuales; §4.2 dice 'infantiles'. Ver pendientes_diseno.md TODO 6.
 CREATE OR ALTER TRIGGER TR_SOCIO_TITULAR_CATEGORIA
 ON SOCIO
 AFTER INSERT, UPDATE
@@ -75,10 +74,10 @@ BEGIN
         SELECT COUNT(*)
         FROM inserted
         WHERE nro_orden = 0
-          AND nombre_categoria = 'Infantil'
+          AND nombre_categoria = 'infantiles'
     ) > 0
     BEGIN
-        THROW 50003, 'El titular de un grupo familiar no puede pertenecer a la categoría Infantil.', 1;
+        THROW 50003, 'El titular de un grupo familiar no puede pertenecer a la categoría infantiles.', 1;
     END;
 END;
 GO
@@ -538,6 +537,143 @@ BEGIN
         WHERE v.meses_transcurridos >= 0
           AND v.meses_transcurridos % v.meses_por_cuota = 0
           AND c.nro_socio_base IS NULL;
+
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF XACT_STATE() <> 0
+            ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH;
+END;
+GO
+
+
+-- Jerarquía de ACTIVIDAD (pendientes_diseno.md TODO 2).
+-- Coherencia: la subentidad sólo admite actividades de su tipo. Eso garantiza también la exclusividad.
+-- Totalidad: SP_ALTA_ACTIVIDAD_* crean la actividad y su subentidad juntas.
+-- Limitación: un INSERT directo en ACTIVIDAD, o borrar una subentidad, puede dejar una actividad sin clasificar.
+
+-- TR_ACTIVIDAD_ARANCELADA_TIPO
+CREATE OR ALTER TRIGGER TR_ACTIVIDAD_ARANCELADA_TIPO
+ON ACTIVIDAD_ARANCELADA
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF (
+        SELECT COUNT(*)
+        FROM inserted i
+        INNER JOIN ACTIVIDAD a
+            ON a.cod_actividad = i.cod_actividad
+        WHERE a.tipo <> 'A'
+    ) > 0
+    BEGIN
+        THROW 50011, 'Una actividad arancelada debe tener tipo A.', 1;
+    END;
+END;
+GO
+
+
+-- TR_ACTIVIDAD_GRATUITA_TIPO
+CREATE OR ALTER TRIGGER TR_ACTIVIDAD_GRATUITA_TIPO
+ON ACTIVIDAD_GRATUITA
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF (
+        SELECT COUNT(*)
+        FROM inserted i
+        INNER JOIN ACTIVIDAD a
+            ON a.cod_actividad = i.cod_actividad
+        WHERE a.tipo <> 'G'
+    ) > 0
+    BEGIN
+        THROW 50012, 'Una actividad gratuita debe tener tipo G.', 1;
+    END;
+END;
+GO
+
+
+-- TR_ACTIVIDAD_TIPO_INMUTABLE
+-- El tipo de una actividad con subentidad no puede cambiar: contradiría la subentidad existente.
+CREATE OR ALTER TRIGGER TR_ACTIVIDAD_TIPO_INMUTABLE
+ON ACTIVIDAD
+AFTER UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF (
+        SELECT COUNT(*)
+        FROM inserted i
+        INNER JOIN deleted d
+            ON d.cod_actividad = i.cod_actividad
+        LEFT JOIN ACTIVIDAD_ARANCELADA ar
+            ON ar.cod_actividad = i.cod_actividad
+        LEFT JOIN ACTIVIDAD_GRATUITA g
+            ON g.cod_actividad = i.cod_actividad
+        WHERE i.tipo <> d.tipo
+          AND (ar.cod_actividad IS NOT NULL OR g.cod_actividad IS NOT NULL)
+    ) > 0
+    BEGIN
+        THROW 50013, 'No se puede cambiar el tipo de una actividad que ya tiene subentidad.', 1;
+    END;
+END;
+GO
+
+
+-- SP_ALTA_ACTIVIDAD_ARANCELADA
+-- Crea la actividad (tipo A) y su subentidad en una transacción.
+CREATE OR ALTER PROCEDURE SP_ALTA_ACTIVIDAD_ARANCELADA
+    @cod_actividad INT,
+    @nombre VARCHAR(50),
+    @arancel DECIMAL(15, 2),
+    @meses_por_cuota INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        INSERT INTO ACTIVIDAD (cod_actividad, nombre, tipo)
+        VALUES (@cod_actividad, @nombre, 'A');
+
+        INSERT INTO ACTIVIDAD_ARANCELADA (cod_actividad, arancel, meses_por_cuota)
+        VALUES (@cod_actividad, @arancel, @meses_por_cuota);
+
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF XACT_STATE() <> 0
+            ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH;
+END;
+GO
+
+
+-- SP_ALTA_ACTIVIDAD_GRATUITA
+-- Crea la actividad (tipo G) y su subentidad en una transacción.
+CREATE OR ALTER PROCEDURE SP_ALTA_ACTIVIDAD_GRATUITA
+    @cod_actividad INT,
+    @nombre VARCHAR(50)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        INSERT INTO ACTIVIDAD (cod_actividad, nombre, tipo)
+        VALUES (@cod_actividad, @nombre, 'G');
+
+        INSERT INTO ACTIVIDAD_GRATUITA (cod_actividad)
+        VALUES (@cod_actividad);
 
         COMMIT TRANSACTION;
     END TRY

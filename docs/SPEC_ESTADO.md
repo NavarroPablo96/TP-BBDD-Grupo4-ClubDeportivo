@@ -61,7 +61,8 @@ Triggers:
 
 - `TR_INSCRIPCION_CATEGORIA_HABILITADA` (sobre `INSCRIPCION`): un socio sólo se inscribe en actividades habilitadas para su categoría (§4.2).
 - `TR_VALOR_CUOTA_SOCIAL_VIGENCIA` (sobre `VALOR_CUOTA_SOCIAL`): los períodos no se superponen ni dejan huecos (§4.2).
-- `TR_SOCIO_TITULAR_CATEGORIA` (sobre `SOCIO`): el titular (`nro_orden = 0`) no puede ser `Infantil` (§4.2). Usa `'Infantil'` literal (TODO 6).
+- `TR_SOCIO_TITULAR_CATEGORIA` (sobre `SOCIO`): el titular (`nro_orden = 0`) no puede ser `infantiles` (§4.2). Usa `'infantiles'` literal.
+- `TR_ACTIVIDAD_ARANCELADA_TIPO` (50011), `TR_ACTIVIDAD_GRATUITA_TIPO` (50012) y `TR_ACTIVIDAD_TIPO_INMUTABLE` (50013): coherencia y exclusividad de la jerarquía de `ACTIVIDAD` (TODO 2).
 - `TR_A_CARGO_DE_PROFESIONAL_ACTIVIDAD` (sobre `A_CARGO_DE`): el profesional debe estar en `PUEDE_DESEMPENIARSE_EN` para la actividad del dictado (§4.2). Error 50005.
 - `TR_SE_DESARROLLA_EN_AREA_APTA` (sobre `SE_DESARROLLA_EN`): el área debe estar en `APTA_PARA` para la actividad del dictado (§4.2). Error 50006.
 - `TR_DICTADO_SOLAPAMIENTO_*` (sobre `DICTADO`, `DICTADO_DIA`, `A_CARGO_DE`, `SE_DESARROLLA_EN`): no hay dos dictados que coincidan en día, horario y período con un área o profesional en común. Consultan la vista `VW_CONFLICTOS_DICTADO`. Error 50007.
@@ -71,6 +72,8 @@ Triggers:
 Stored procedures:
 
 - `SP_ALTA_GRUPO_FAMILIAR`: crea grupo y titular en una transacción. Garantiza que todo grupo tenga titular (H1).
+- Constraints de dominio agregados en `01`: `CK_CATEGORIA_NOMBRE` (las tres categorías de §4.2), `CK_SOCIO_NRO_ORDEN` (`nro_orden >= 0`) y `CK_AREA_COD_AREA`.
+- `SP_ALTA_ACTIVIDAD_ARANCELADA` y `SP_ALTA_ACTIVIDAD_GRATUITA`: crean la actividad y su subentidad en una transacción (totalidad de la jerarquía, TODO 2). Un `INSERT` directo en `ACTIVIDAD` puede saltearlos (limitación).
 - `SP_ALTA_DICTADO`: crea dictado, un día y un profesional a cargo en una transacción (H13). Un dictado sin profesional no se puede crear.
 - `SP_INSCRIBIR_ACTIVIDAD (@nro_socio_base, @nro_orden, @cod_actividad, @fecha_inscripcion)`: inscribe. Si la actividad es arancelada, genera la cuota 1 por adelantado (H9). Transacción.
 - `SP_LIQUIDAR_CUOTA_ARANCEL (@anio, @mes)`: genera, para el mes, la cuota de arancel que vence en cada inscripción arancelada. La cuota k vence k × `meses_por_cuota` meses después de la inscripción. No duplica (H8, H9).
@@ -82,13 +85,13 @@ Las consultas también son SP, con año como parámetro, por decisión del usuar
 
 ### 3.3 Datos de prueba
 
-- `02_insercion_datos.sql`: 4 categorías, 5 grupos (8 socios), 4 valores de cuota social (2025 y 2026). Categorías en `Infantil/Juvenil/Adulto/Jubilado` (ver TODO 6). Sin `CUOTA_SOCIAL`, sin actividades, sin inscripciones.
+- `02_insercion_datos.sql`: 3 categorías (`infantiles` -30, `mayores` 0, `vitalicios` -15), 5 grupos (8 socios, titulares con `nro_orden = 0`), 4 valores de cuota social (2025 y 2026). Sin `CUOTA_SOCIAL`, sin actividades, sin inscripciones.
 - `04_datos_logica_socios_cuotas.sql`: 3 grupos nuevos (Marta Ruiz, Pablo Diaz, Elena Sosa), 2 actividades gratuitas (201, 202), 1 arancelada (301), habilitaciones, cuotas de enero a marzo 2026 con pagos completos, parciales y sin pagar, e inscripciones de 2025 y 2026.
 
 Resultados esperados con estos datos:
 
-- `SP_CONSULTA_TITULARES_DEUDA 2026`: Pablo Diaz 30000.00 (1 integrante), Elena Sosa 78250.00 (2 integrantes).
-- `SP_CONSULTA_SOCIOS_GRATUITAS 2025`: Adulto 2, el resto 0.
+- `SP_CONSULTA_TITULARES_DEUDA 2026`: Juan Perez 121500.00 (3), Carlos Gomez 90000.00 (2), Sofia Rodriguez 45000.00 (1), Roberto Fernandez 38250.00 (1), Laura Martinez 45000.00 (1), Pablo Diaz 30000.00 (1), Elena Sosa 78250.00 (2).
+- `SP_CONSULTA_SOCIOS_GRATUITAS 2025`: mayores 2, el resto 0.
 
 ### 3.4 Verificación hecha
 
@@ -97,6 +100,8 @@ Resultados esperados con estos datos:
 - Liquidar dos veces el mismo mes no duplica cuotas. Los montos calculados coinciden con los esperados.
 - Reconstrucción limpia con `00` a `04` (exit 0). `03` se puede volver a correr (exit 0).
 - Pruebas de rechazo y control dentro de `04` (bloques A–G, cada uno en transacción con `ROLLBACK`): 50005, 50006, 50007 (y el control D que pasa), 50008, 50009 y 50010. Imprimen el resultado.
+- Pruebas H–N en `04`: 50011, 50012 y 50013 rechazan, el alta por SP de actividades pasa (K), y los CHECK rechazan con error 547: `CK_PROFESIONAL_DNI` (dni 0), `CK_AREA_COD_AREA` (blanco y espacio inicial), `CK_CATEGORIA_NOMBRE` (categoría no permitida) y `CK_SOCIO_NRO_ORDEN` (nro_orden negativo). Los casos L–N corren en transacción con `ROLLBACK`.
+- Reconstrucción `00` a `04` con exit 0 y `03` re-ejecutable, tras aplicar TODO 2, 4 y 6.
 - Arancel de control: la deuda de arancel de Marta (actividad 301) es 8000.00.
 - Re-correr `02` sobre una base cargada falla por diseño (`FK_SOCIO_GRUPO_FAMILIAR`): la `IDENTITY` de `GRUPO_FAMILIAR` no se reinicia. Los `DELETE` sí corren hasta ese punto. Re-correr `04` sobre datos cargados falla por claves duplicadas.
 
@@ -134,7 +139,7 @@ Ya no faltan tablas. Las cuatro de cronograma y arancel están en `01` con PK, F
 ### 4.4 Restricciones pendientes de implementación
 
 - Participación total de `GRUPO_FAMILIAR` ↔ `SOCIO`: `TR_SOCIO_BAJA_GRUPO` cubre la baja. Un `INSERT` directo puede saltear `SP_ALTA_GRUPO_FAMILIAR` (limitación).
-- Totalidad y coherencia de la jerarquía `ACTIVIDAD` (TODO 2): hoy sólo hay CHECK de `tipo`. Requiere decisión del grupo.
+- Jerarquía `ACTIVIDAD` (TODO 2): coherencia y exclusividad con triggers, totalidad con `SP_ALTA_ACTIVIDAD_*`. Limitación: un `INSERT` directo en `ACTIVIDAD`, o borrar una subentidad, deja una actividad sin clasificar.
 - Baja de inscripciones al cambiar de categoría (H12, TODO 5). Requiere decisión sobre borrar filas o agregar estado.
 
 ### 4.5 Aplicación host
@@ -155,23 +160,22 @@ Todas en [pendientes_diseno.md](pendientes_diseno.md). Resumen:
 
 | TODO | Tema | Estado |
 |---|---|---|
-| 1 | Periodicidades de `meses_por_cuota` | Lista cerrada aplicada por decisión del usuario; falta confirmar con el grupo. |
-| 2 | Jerarquía de `ACTIVIDAD` (coherencia, exclusividad, totalidad) | Pendiente. |
-| 3 | Dominio de `AREA.estado_mantenimiento` | Pendiente. |
-| 4 | Supuestos de tipos de `PROFESIONAL` y `AREA` | Aplicados, sin confirmar. |
-| 5 | Baja de inscripciones al cambiar categoría (H12) | Pendiente; fuera del alcance actual. |
-| 6 | Nomenclatura de categorías y `nro_orden` de `02` vs. §4.2 | Pendiente; los datos no se corrigieron. |
-| 7 | Fecha de vencimiento de la cuota social | Supuesto: último día del mes. |
-| 8 | "Todas las gratuitas" sin actividades y criterio de "año pasado" | Supuesto aplicado; falta confirmar. |
-| 9 | Consultas 1 y 2 como SP | Decidido: SP con parámetro de año. Falta confirmar criterio de año pasado (ver TODO 8). |
+| 1 | Periodicidades de `meses_por_cuota` | Cerrado: `IN (1, 2, 3, 6, 12)`. |
+| 2 | Jerarquía de `ACTIVIDAD` (coherencia, exclusividad, totalidad) | Aplicado (triggers y SP de alta). |
+| 3 | Dominio de `AREA.estado_mantenimiento` | Abierto; el usuario lo consulta. |
+| 4 | Tipos de `PROFESIONAL.dni` y `AREA.cod_area` | Aplicado: `dni` `INT` con `dni > 0`; `cod_area` `VARCHAR(20)` con CHECK de formato. |
+| 5 | Baja de inscripciones al cambiar categoría (H12) | Abierto; el usuario lo consulta (se inclina por agregar estado a `INSCRIPCION`). |
+| 6 | Nomenclatura de categorías y `nro_orden` de `02` vs. §4.2 | Aplicado: `infantiles/mayores/vitalicios` y titular en 0. |
+| 7 | Fecha de vencimiento de la cuota social | Cerrado: último día del mes. |
+| 8 | "Todas las gratuitas" sin actividades y criterio de "año pasado" | Abierto; el usuario lo consulta. Supuesto aplicado. |
+| 9 | Consultas 1 y 2 como SP | SP con parámetro de año. Falta confirmar criterio de año pasado (ver TODO 8). |
 
 ## 6. Problemas conocidos
 
 - `02_insercion_datos.sql`: sólo corre sobre base recién creada por `00`. Los `DELETE` ya van en orden inverso de dependencias, pero la re-carga falla igual por la `IDENTITY` de `GRUPO_FAMILIAR`.
-- `03_logica_socios_cuotas.sql`: `TR_SOCIO_TITULAR_CATEGORIA` tiene `'Infantil'` literal. Si cambian las categorías (TODO 6), hay que actualizar el trigger.
+- `03_logica_socios_cuotas.sql`: `TR_SOCIO_TITULAR_CATEGORIA` tiene `'infantiles'` literal. Si cambian las categorías, hay que actualizar el trigger.
 - `04_datos_logica_socios_cuotas.sql`: no borra nada. Si se corre sobre una base con datos, falla por claves duplicadas. Correr siempre después de `00`.
-- Los grupos de `02` no tienen titular con `nro_orden = 0`. No aparecen en la consulta de deuda (`SP_CONSULTA_TITULARES_DEUDA`), aunque sí tienen cuotas.
-- `CLAUDE.md` §3 quedó desactualizado: todavía dice que faltan las tablas de profesionales, áreas y dictados, y las funcionalidades ya implementadas. Conviene actualizarlo.
+- Un `INSERT` directo en `ACTIVIDAD` o borrar una subentidad puede dejar una actividad sin clasificar (la totalidad la cubren los `SP_ALTA_ACTIVIDAD_*`).
 
 ## 7. Próximos pasos sugeridos
 
@@ -180,7 +184,6 @@ Hecho en el plan de faltantes: triggers de cronograma, arancel, participación t
 Pendiente:
 
 1. Completar los entregables a–e (§4.6).
-2. Resolver los TODO de §5 con el equipo (se retoman más adelante).
-3. Decidir H12 (TODO 5) y TODO 6 con el equipo.
+2. Resolver con el equipo los TODO abiertos de §5: 3, 5 (H12), 8 y 9.
 
 La aplicación host queda fuera de este plan.

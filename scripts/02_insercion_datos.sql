@@ -31,10 +31,9 @@ GO
 
 INSERT INTO CATEGORIA (nombre_categoria, porcentaje_mod_cuota)
 VALUES
-    ('Infantil', -30.00),
-    ('Juvenil', -15.00),
-    ('Adulto', 0.00),
-    ('Jubilado', -15.00);
+    ('infantiles', -30.00),
+    ('mayores', 0.00),
+    ('vitalicios', -15.00);
 GO
 
 USE ClubDeportivo;
@@ -53,18 +52,18 @@ USE ClubDeportivo;
 GO
 INSERT INTO SOCIO (nro_socio_base,nro_orden,nombre,fecha_nacimiento,correo_electronico,celular,nombre_categoria)
 VALUES
-    (1, 1, 'Juan Perez', '1985-04-12', 'juan.perez@email.com', '2235000001', 'Adulto'),
-    (1, 2, 'Maria Lopez', '1987-09-23', 'maria.lopez@email.com', '2235000002', 'Adulto'),
-    (1, 3, 'Lucas Perez', '2012-06-15', NULL, '2235000003', 'Infantil'),
+    (1, 0, 'Juan Perez', '1985-04-12', 'juan.perez@email.com', '2235000001', 'mayores'),
+    (1, 1, 'Maria Lopez', '1987-09-23', 'maria.lopez@email.com', '2235000002', 'mayores'),
+    (1, 2, 'Lucas Perez', '2012-06-15', NULL, '2235000003', 'infantiles'),
 
-    (2, 1, 'Carlos Gomez', '1975-02-18', 'carlos.gomez@email.com', '2235000004', 'Adulto'),
-    (2, 2, 'Ana Gomez', '1978-11-30', 'ana.gomez@email.com', '2235000005', 'Adulto'),
-    
-    (3, 1, 'Sofia Rodriguez', '2008-08-07', 'sofia.rodriguez@email.com', '2235000006', 'Juvenil'),
-    
-    (4, 1, 'Roberto Fernandez', '1955-01-25', 'roberto.fernandez@email.com', '2235000007', 'Jubilado'),
-    
-    (5, 1, 'Laura Martinez', '1990-12-03', 'laura.martinez@email.com', '2235000008', 'Adulto');
+    (2, 0, 'Carlos Gomez', '1975-02-18', 'carlos.gomez@email.com', '2235000004', 'mayores'),
+    (2, 1, 'Ana Gomez', '1978-11-30', 'ana.gomez@email.com', '2235000005', 'mayores'),
+
+    (3, 0, 'Sofia Rodriguez', '2008-08-07', 'sofia.rodriguez@email.com', '2235000006', 'mayores'),
+
+    (4, 0, 'Roberto Fernandez', '1955-01-25', 'roberto.fernandez@email.com', '2235000007', 'vitalicios'),
+
+    (5, 0, 'Laura Martinez', '1990-12-03', 'laura.martinez@email.com', '2235000008', 'mayores');
 GO
 
 USE ClubDeportivo;
