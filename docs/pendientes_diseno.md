@@ -47,6 +47,9 @@ Si se garantiza la coherencia del tipo en ambas subentidades, también se garant
 **Estado:** ABIERTO. El usuario lo va a consultar. Hoy es `VARCHAR(30) NOT NULL` sin valores permitidos, porque el enunciado no los define. Propuesta sin confirmar: `CHECK` con `'Operativa'`, `'En mantenimiento'`, `'Fuera de servicio'`.
 
 - [ ] Acordar la lista de estados y reemplazar el tipo libre por un `CHECK` o una tabla de dominio.
+- [ ] Confirmar que un área tiene un solo estado a la vez: no se admiten atributos multivaluados, así que varios estados simultáneos o un historial exigirían una tabla aparte (`ESTADO_AREA`) y un cambio de modelo.
+
+Consulta redactada para el grupo en [consulta_decisiones_abiertas.md](consulta_decisiones_abiertas.md) (puntos 1 a 4, junto con los TODO 5, 8 y 9).
 
 ## TODO 4: Validar supuestos de tipos de `PROFESIONAL` y `AREA`
 
