@@ -253,3 +253,153 @@ LEFT JOIN (
 GROUP BY c.nombre_categoria;
 END;
 GO
+
+
+-- VW_CONFLICTOS_DICTADO
+-- §4.2: un área o un profesional no puede estar en dos dictados que coincidan en día, horario y período.
+-- Lista los pares de dictados en conflicto. Los triggers de cronograma consultan esta vista.
+CREATE OR ALTER VIEW VW_CONFLICTOS_DICTADO
+AS
+SELECT d1.cod_dictado AS cod_dictado_1,
+       d2.cod_dictado AS cod_dictado_2
+FROM DICTADO d1
+INNER JOIN DICTADO d2
+    ON d2.cod_dictado > d1.cod_dictado
+WHERE d1.fecha_desde <= d2.fecha_fin
+  AND d2.fecha_desde <= d1.fecha_fin
+  AND d1.hora_inicio < d2.hora_fin
+  AND d2.hora_inicio < d1.hora_fin
+  AND EXISTS (
+      SELECT 1
+      FROM DICTADO_DIA x
+      INNER JOIN DICTADO_DIA y
+          ON y.dia_semana = x.dia_semana
+      WHERE x.cod_dictado = d1.cod_dictado
+        AND y.cod_dictado = d2.cod_dictado
+  )
+  AND (
+      EXISTS (
+          SELECT 1
+          FROM SE_DESARROLLA_EN x
+          INNER JOIN SE_DESARROLLA_EN y
+              ON y.cod_area = x.cod_area
+          WHERE x.cod_dictado = d1.cod_dictado
+            AND y.cod_dictado = d2.cod_dictado
+      )
+      OR EXISTS (
+          SELECT 1
+          FROM A_CARGO_DE x
+          INNER JOIN A_CARGO_DE y
+              ON y.dni = x.dni
+          WHERE x.cod_dictado = d1.cod_dictado
+            AND y.cod_dictado = d2.cod_dictado
+      )
+  );
+GO
+
+
+-- TR_A_CARGO_DE_PROFESIONAL_ACTIVIDAD
+-- §4.2: el profesional a cargo de un dictado debe poder desempeñarse en su actividad (PUEDE_DESEMPENIARSE_EN).
+CREATE OR ALTER TRIGGER TR_A_CARGO_DE_PROFESIONAL_ACTIVIDAD
+ON A_CARGO_DE
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF EXISTS (
+        SELECT 1
+        FROM inserted i
+        INNER JOIN DICTADO d
+            ON d.cod_dictado = i.cod_dictado
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM PUEDE_DESEMPENIARSE_EN p
+            WHERE p.dni = i.dni
+              AND p.cod_actividad = d.cod_actividad
+        )
+    )
+    BEGIN
+        THROW 50005, 'El profesional no puede dictar esta actividad: no está habilitado para desempeñarse en ella.', 1;
+    END;
+END;
+GO
+
+
+-- TR_SE_DESARROLLA_EN_AREA_APTA
+-- §4.2: el área donde se desarrolla un dictado debe ser apta para su actividad (APTA_PARA).
+CREATE OR ALTER TRIGGER TR_SE_DESARROLLA_EN_AREA_APTA
+ON SE_DESARROLLA_EN
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF EXISTS (
+        SELECT 1
+        FROM inserted i
+        INNER JOIN DICTADO d
+            ON d.cod_dictado = i.cod_dictado
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM APTA_PARA a
+            WHERE a.cod_area = i.cod_area
+              AND a.cod_actividad = d.cod_actividad
+        )
+    )
+    BEGIN
+        THROW 50006, 'El área no es apta para la actividad del dictado.', 1;
+    END;
+END;
+GO
+
+
+-- TR_DICTADO_SOLAPAMIENTO (una por tabla que participa del conflicto)
+-- §4.2: sin solapamiento de día, horario y período para áreas y profesionales.
+CREATE OR ALTER TRIGGER TR_DICTADO_SOLAPAMIENTO_DICTADO
+ON DICTADO
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF EXISTS (SELECT 1 FROM VW_CONFLICTOS_DICTADO)
+        THROW 50007, 'El dictado se solapa con otro en día, horario y período, con un área o profesional en común.', 1;
+END;
+GO
+
+CREATE OR ALTER TRIGGER TR_DICTADO_SOLAPAMIENTO_DICTADO_DIA
+ON DICTADO_DIA
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF EXISTS (SELECT 1 FROM VW_CONFLICTOS_DICTADO)
+        THROW 50007, 'El dictado se solapa con otro en día, horario y período, con un área o profesional en común.', 1;
+END;
+GO
+
+CREATE OR ALTER TRIGGER TR_DICTADO_SOLAPAMIENTO_A_CARGO_DE
+ON A_CARGO_DE
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF EXISTS (SELECT 1 FROM VW_CONFLICTOS_DICTADO)
+        THROW 50007, 'El dictado se solapa con otro en día, horario y período, con un área o profesional en común.', 1;
+END;
+GO
+
+CREATE OR ALTER TRIGGER TR_DICTADO_SOLAPAMIENTO_SE_DESARROLLA_EN
+ON SE_DESARROLLA_EN
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF EXISTS (SELECT 1 FROM VW_CONFLICTOS_DICTADO)
+        THROW 50007, 'El dictado se solapa con otro en día, horario y período, con un área o profesional en común.', 1;
+END;
+GO
