@@ -403,3 +403,212 @@ BEGIN
         THROW 50007, 'El dictado se solapa con otro en día, horario y período, con un área o profesional en común.', 1;
 END;
 GO
+
+
+-- TR_CUOTA_ARANCEL_ACTIVIDAD_ARANCELADA
+-- §4.2 y H9: sólo las inscripciones a actividades aranceladas generan cuotas de arancel.
+CREATE OR ALTER TRIGGER TR_CUOTA_ARANCEL_ACTIVIDAD_ARANCELADA
+ON CUOTA_ARANCEL
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF EXISTS (
+        SELECT 1
+        FROM inserted c
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM ACTIVIDAD_ARANCELADA a
+            WHERE a.cod_actividad = c.cod_actividad
+        )
+    )
+    BEGIN
+        THROW 50008, 'Sólo las inscripciones a actividades aranceladas pueden generar cuotas de arancel.', 1;
+    END;
+END;
+GO
+
+
+-- TR_SOCIO_BAJA_GRUPO
+-- H1, H13 y §4.2: el titular no se da de baja mientras el grupo tenga integrantes,
+-- y un grupo no queda sin integrantes. Al borrar el grupo completo (cascada), no aplica.
+CREATE OR ALTER TRIGGER TR_SOCIO_BAJA_GRUPO
+ON SOCIO
+AFTER DELETE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF EXISTS (
+        SELECT 1
+        FROM deleted d
+        WHERE d.nro_orden = 0
+          AND EXISTS (
+              SELECT 1
+              FROM SOCIO s
+              WHERE s.nro_socio_base = d.nro_socio_base
+          )
+    )
+    BEGIN
+        THROW 50009, 'No se puede dar de baja el titular mientras el grupo tenga integrantes.', 1;
+    END;
+
+    IF EXISTS (
+        SELECT 1
+        FROM deleted d
+        WHERE EXISTS (
+              SELECT 1
+              FROM GRUPO_FAMILIAR g
+              WHERE g.nro_socio_base = d.nro_socio_base
+          )
+          AND NOT EXISTS (
+              SELECT 1
+              FROM SOCIO s
+              WHERE s.nro_socio_base = d.nro_socio_base
+          )
+    )
+    BEGIN
+        THROW 50010, 'No se puede dar de baja el último integrante de un grupo familiar.', 1;
+    END;
+END;
+GO
+
+
+-- SP_INSCRIBIR_ACTIVIDAD
+-- §4.2 y H9: inscribe a un socio. Si la actividad es arancelada, genera la primera cuota,
+-- que vence en la fecha de inscripción (se paga por adelantado). Todo en una transacción.
+CREATE OR ALTER PROCEDURE SP_INSCRIBIR_ACTIVIDAD
+    @nro_socio_base INT,
+    @nro_orden INT,
+    @cod_actividad INT,
+    @fecha_inscripcion DATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @arancel DECIMAL(15,2);
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        INSERT INTO INSCRIPCION (nro_socio_base, nro_orden, cod_actividad, fecha_inscripcion)
+        VALUES (@nro_socio_base, @nro_orden, @cod_actividad, @fecha_inscripcion);
+
+        SELECT @arancel = arancel
+        FROM ACTIVIDAD_ARANCELADA
+        WHERE cod_actividad = @cod_actividad;
+
+        IF @arancel IS NOT NULL
+            INSERT INTO CUOTA_ARANCEL (nro_socio_base, nro_orden, cod_actividad, nro_cuota, monto_a_pagar, fecha_vencimiento, monto_abonado, fecha_pago)
+            VALUES (@nro_socio_base, @nro_orden, @cod_actividad, 1, @arancel, @fecha_inscripcion, NULL, NULL);
+
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF XACT_STATE() <> 0
+            ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH;
+END;
+GO
+
+
+-- SP_LIQUIDAR_CUOTA_ARANCEL
+-- H8, H9 y §4.2: genera, para un mes, la cuota de arancel que vence en ese mes en cada
+-- inscripción arancelada. La cuota k (k >= 0) vence k * meses_por_cuota meses después de la inscripción.
+-- Supuesto: el SP se corre cada mes; si no se corre en un mes, esa cuota no se genera.
+CREATE OR ALTER PROCEDURE SP_LIQUIDAR_CUOTA_ARANCEL
+    @anio INT,
+    @mes INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        ;WITH vencimientos AS (
+            SELECT i.nro_socio_base,
+                   i.nro_orden,
+                   i.cod_actividad,
+                   i.fecha_inscripcion,
+                   a.arancel,
+                   a.meses_por_cuota,
+                   (@anio * 12 + @mes) - (YEAR(i.fecha_inscripcion) * 12 + MONTH(i.fecha_inscripcion)) AS meses_transcurridos
+            FROM INSCRIPCION i
+            INNER JOIN ACTIVIDAD_ARANCELADA a
+                ON a.cod_actividad = i.cod_actividad
+        )
+        INSERT INTO CUOTA_ARANCEL (nro_socio_base, nro_orden, cod_actividad, nro_cuota, monto_a_pagar, fecha_vencimiento, monto_abonado, fecha_pago)
+        SELECT v.nro_socio_base,
+               v.nro_orden,
+               v.cod_actividad,
+               v.meses_transcurridos / v.meses_por_cuota + 1,
+               v.arancel,
+               DATEADD(MONTH, v.meses_transcurridos, v.fecha_inscripcion),
+               NULL,
+               NULL
+        FROM vencimientos v
+        WHERE v.meses_transcurridos >= 0
+          AND v.meses_transcurridos % v.meses_por_cuota = 0
+          AND NOT EXISTS (
+              SELECT 1
+              FROM CUOTA_ARANCEL c
+              WHERE c.nro_socio_base = v.nro_socio_base
+                AND c.nro_orden = v.nro_orden
+                AND c.cod_actividad = v.cod_actividad
+                AND c.nro_cuota = v.meses_transcurridos / v.meses_por_cuota + 1
+          );
+
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF XACT_STATE() <> 0
+            ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH;
+END;
+GO
+
+
+-- SP_ALTA_DICTADO
+-- H13 y §4.2: crea un dictado con un día, y un profesional a cargo, en una transacción.
+-- Un dictado sin profesional no se puede crear: A_CARGO_DE exige @dni.
+-- Supuesto: los días adicionales se cargan en DICTADO_DIA después; áreas en SE_DESARROLLA_EN.
+CREATE OR ALTER PROCEDURE SP_ALTA_DICTADO
+    @cod_actividad INT,
+    @fecha_desde DATE,
+    @fecha_fin DATE,
+    @hora_inicio TIME,
+    @hora_fin TIME,
+    @dia_semana INT,
+    @dni INT,
+    @cod_dictado INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        INSERT INTO DICTADO (fecha_desde, fecha_fin, hora_inicio, hora_fin, cod_actividad)
+        VALUES (@fecha_desde, @fecha_fin, @hora_inicio, @hora_fin, @cod_actividad);
+
+        SET @cod_dictado = SCOPE_IDENTITY();
+
+        INSERT INTO DICTADO_DIA (cod_dictado, dia_semana)
+        VALUES (@cod_dictado, @dia_semana);
+
+        INSERT INTO A_CARGO_DE (cod_dictado, dni)
+        VALUES (@cod_dictado, @dni);
+
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF XACT_STATE() <> 0
+            ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH;
+END;
+GO

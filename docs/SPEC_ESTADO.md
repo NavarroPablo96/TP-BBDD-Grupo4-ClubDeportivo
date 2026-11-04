@@ -36,17 +36,18 @@ Nota: con `-S localhost` no conecta en esta máquina; la instancia es `(localdb)
 
 ## 3. Estado: qué está hecho
 
-### 3.1 Tablas (`01_creacion_tablas.sql`): 15 de 19
+### 3.1 Tablas (`01_creacion_tablas.sql`): 19 de 19
 
-Implementadas:
+Implementadas (todas las de §4.1 de TP_BBDD_Grupo_4.md, con su `DROP` en el bloque inicial):
 
 - Socios: `CATEGORIA`, `GRUPO_FAMILIAR`, `SOCIO`.
 - Cuotas sociales: `VALOR_CUOTA_SOCIAL`, `CUOTA_SOCIAL`.
 - Actividades: `ACTIVIDAD`, `ACTIVIDAD_ARANCELADA`, `ACTIVIDAD_GRATUITA`, `HABILITADA_PARA`, `INSCRIPCION`.
 - Profesionales y áreas: `PROFESIONAL`, `AREA`, `PUEDE_DESEMPENIARSE_EN`, `APTA_PARA`.
-- Dictados: `DICTADO`.
+- Dictados: `DICTADO`, `DICTADO_DIA`, `A_CARGO_DE`, `SE_DESARROLLA_EN`.
+- Arancel: `CUOTA_ARANCEL`.
 
-Faltan (ver §4): `DICTADO_DIA`, `A_CARGO_DE`, `SE_DESARROLLA_EN`, `CUOTA_ARANCEL`.
+Las tablas nuevas de cronograma y arancel tienen DDL pero todavía no tienen lógica (triggers, SP) ni datos de prueba. Ver §4.
 
 Constraints de §4.2 ya resueltos con DDL:
 - `CK_CUOTA_SOCIAL_ABONADO`: `monto_abonado <= monto_a_pagar` (`NULL` = sin pagos).
@@ -61,10 +62,18 @@ Triggers:
 - `TR_INSCRIPCION_CATEGORIA_HABILITADA` (sobre `INSCRIPCION`): un socio sólo se inscribe en actividades habilitadas para su categoría (§4.2).
 - `TR_VALOR_CUOTA_SOCIAL_VIGENCIA` (sobre `VALOR_CUOTA_SOCIAL`): los períodos no se superponen ni dejan huecos (§4.2).
 - `TR_SOCIO_TITULAR_CATEGORIA` (sobre `SOCIO`): el titular (`nro_orden = 0`) no puede ser `Infantil` (§4.2). Usa `'Infantil'` literal (TODO 6).
+- `TR_A_CARGO_DE_PROFESIONAL_ACTIVIDAD` (sobre `A_CARGO_DE`): el profesional debe estar en `PUEDE_DESEMPENIARSE_EN` para la actividad del dictado (§4.2). Error 50005.
+- `TR_SE_DESARROLLA_EN_AREA_APTA` (sobre `SE_DESARROLLA_EN`): el área debe estar en `APTA_PARA` para la actividad del dictado (§4.2). Error 50006.
+- `TR_DICTADO_SOLAPAMIENTO_*` (sobre `DICTADO`, `DICTADO_DIA`, `A_CARGO_DE`, `SE_DESARROLLA_EN`): no hay dos dictados que coincidan en día, horario y período con un área o profesional en común. Consultan la vista `VW_CONFLICTOS_DICTADO`. Error 50007.
+- `TR_CUOTA_ARANCEL_ACTIVIDAD_ARANCELADA` (sobre `CUOTA_ARANCEL`): sólo las actividades aranceladas generan cuotas de arancel (§4.2, H9). Error 50008.
+- `TR_SOCIO_BAJA_GRUPO` (sobre `SOCIO`, al borrar): el titular no se da de baja mientras el grupo tenga integrantes (50009), y un grupo no queda sin integrantes (50010). No aplica al borrar el grupo completo por cascada.
 
 Stored procedures:
 
 - `SP_ALTA_GRUPO_FAMILIAR`: crea grupo y titular en una transacción. Garantiza que todo grupo tenga titular (H1).
+- `SP_ALTA_DICTADO`: crea dictado, un día y un profesional a cargo en una transacción (H13). Un dictado sin profesional no se puede crear.
+- `SP_INSCRIBIR_ACTIVIDAD (@nro_socio_base, @nro_orden, @cod_actividad, @fecha_inscripcion)`: inscribe. Si la actividad es arancelada, genera la cuota 1 por adelantado (H9). Transacción.
+- `SP_LIQUIDAR_CUOTA_ARANCEL (@anio, @mes)`: genera, para el mes, la cuota de arancel que vence en cada inscripción arancelada. La cuota k vence k × `meses_por_cuota` meses después de la inscripción. No duplica (H8, H9).
 - `SP_LIQUIDAR_CUOTA_SOCIAL (@anio, @mes)`: genera la cuota social de un mes para cada grupo que no la tenga (H8, H10). Monto = suma de `monto_base` vigente × `(1 + porcentaje_mod_cuota / 100)` por integrante. Se fija al generar. Vencimiento: último día del mes (supuesto, TODO 7).
 - `SP_CONSULTA_TITULARES_DEUDA (@anio)`: consulta 1 del enunciado. Titulares con deuda del año, importe total e integrantes.
 - `SP_CONSULTA_SOCIOS_GRATUITAS (@anio)`: consulta 2 del enunciado. Socios por categoría inscriptos en todas las gratuitas del año indicado. Se llama con el año anterior.
@@ -86,6 +95,10 @@ Resultados esperados con estos datos:
 - `00` a `04` corren con exit 0, y `01` y `03` se pueden volver a correr sobre la base creada.
 - Rechazos comprobados: inscripción no habilitada, vigencia superpuesta, hueco en vigencia, titular infantil y abonado mayor a pagar. El alta de titular infantil no deja filas en `GRUPO_FAMILIAR` (rollback del SP).
 - Liquidar dos veces el mismo mes no duplica cuotas. Los montos calculados coinciden con los esperados.
+- Reconstrucción limpia con `00` a `04` (exit 0). `03` se puede volver a correr (exit 0).
+- Pruebas de rechazo y control dentro de `04` (bloques A–G, cada uno en transacción con `ROLLBACK`): 50005, 50006, 50007 (y el control D que pasa), 50008, 50009 y 50010. Imprimen el resultado.
+- Arancel de control: la deuda de arancel de Marta (actividad 301) es 8000.00.
+- Re-correr `02` sobre una base cargada falla por diseño (`FK_SOCIO_GRUPO_FAMILIAR`): la `IDENTITY` de `GRUPO_FAMILIAR` no se reinicia. Los `DELETE` sí corren hasta ese punto. Re-correr `04` sobre datos cargados falla por claves duplicadas.
 
 ### 3.5 Cambios recientes que conviene conocer
 
@@ -96,38 +109,37 @@ Resultados esperados con estos datos:
 
 ### 4.1 Tablas
 
-- `DICTADO_DIA (cod_dictado, dia_semana)`: PK compuesta, FK a `DICTADO`. `dia_semana` entre 1 y 7 (§4.2).
-- `A_CARGO_DE (cod_dictado, dni)`: PK compuesta, FK a `DICTADO` y `PROFESIONAL`.
-- `SE_DESARROLLA_EN (cod_dictado, cod_area)`: PK compuesta, FK a `DICTADO` y `AREA`.
-- `CUOTA_ARANCEL (nro_socio_base, nro_orden, cod_actividad, nro_cuota, monto_a_pagar, fecha_vencimiento, monto_abonado, fecha_pago)`: PK compuesta, FK a `INSCRIPCION`. Esquema en §4.1 de TP_BBDD_Grupo_4.md.
+Ya no faltan tablas. Las cuatro de cronograma y arancel están en `01` con PK, FK y CHECK:
 
-Orden de creación: `DICTADO_DIA`, `A_CARGO_DE` y `SE_DESARROLLA_EN` después de `DICTADO` (que ya existe); `CUOTA_ARANCEL` después de `INSCRIPCION` (que ya existe).
+- `DICTADO_DIA`: `dia_semana` entre 1 y 7 (`CK_DICTADO_DIA_SEMANA`).
+- `A_CARGO_DE`: PK compuesta, FK a `DICTADO` y `PROFESIONAL`.
+- `SE_DESARROLLA_EN`: PK compuesta, FK a `DICTADO` y `AREA`.
+- `CUOTA_ARANCEL`: PK compuesta, FK a `INSCRIPCION`, `CK_CUOTA_ARANCEL_NRO_CUOTA`, `CK_CUOTA_ARANCEL_IMPORTES` y `CK_CUOTA_ARANCEL_ABONADO`.
 
-Para cada tabla nueva: agregar `DROP` al bloque inicial de `01` en orden inverso, comentario con el esquema lógico (PK/CK/FK) y constraints con nombre (CLAUDE.md §6 y §7).
+### 4.2 Triggers y procedimientos de cronograma (implementados)
 
-### 4.2 Triggers y procedimientos de cronograma (dependen de tablas de 4.1)
+- Profesional a cargo debe poder desempeñarse en la actividad: `TR_A_CARGO_DE_PROFESIONAL_ACTIVIDAD`.
+- Área del dictado debe ser apta para la actividad: `TR_SE_DESARROLLA_EN_AREA_APTA`.
+- Sin solapamiento de día, horario y período con área o profesional en común: `TR_DICTADO_SOLAPAMIENTO_*`.
+- Todo dictado con al menos un profesional a cargo (H13): `SP_ALTA_DICTADO`. Un `INSERT` directo puede saltear el SP (limitación).
 
-- Un profesional a cargo de un dictado debe poder desempeñarse en la actividad del dictado (`PUEDE_DESEMPENIARSE_EN`). Trigger sobre `A_CARGO_DE`.
-- Un área en la que se desarrolla un dictado debe ser apta para la actividad (`APTA_PARA`). Trigger sobre `SE_DESARROLLA_EN`.
-- Un área o un profesional no puede estar en dos dictados que coincidan en día, horario y período. Trigger sobre `DICTADO_DIA`, `A_CARGO_DE` y `SE_DESARROLLA_EN`.
-- Todo dictado tiene al menos un profesional a cargo (H13, participación total). Requiere SP de alta de dictado, o trigger sobre `DICTADO` / `A_CARGO_DE`.
+### 4.3 Triggers y procedimientos de arancel (implementados)
 
-### 4.3 Triggers y procedimientos de arancel (dependen de `CUOTA_ARANCEL`)
-
-- Sólo las inscripciones a actividades aranceladas generan cuotas de arancel (§4.2). Validar contra `ACTIVIDAD_ARANCELADA`.
-- Al inscribir en una actividad arancelada se generan las cuotas según `meses_por_cuota`, con vencimiento a `k × meses_por_cuota` meses de la inscripción (H9, §4.2). Es el SP de inscripción transaccional.
-- `monto_abonado` entre 0 y `monto_a_pagar`; la deuda no se almacena (§4.2). Ya hay `CK_CUOTA_SOCIAL_ABONADO` para cuotas sociales; falta el equivalente en `CUOTA_ARANCEL`.
+- Sólo actividades aranceladas generan cuotas: `TR_CUOTA_ARANCEL_ACTIVIDAD_ARANCELADA` (50008).
+- Inscripción con cuota 1 por adelantado y cuotas siguientes por periodicidad (H9): `SP_INSCRIBIR_ACTIVIDAD` y `SP_LIQUIDAR_CUOTA_ARANCEL`.
+- `monto_abonado` entre 0 y `monto_a_pagar`: `CK_CUOTA_ARANCEL_ABONADO`.
 - Las cuotas de arancel se fijan al generar (H8).
+- Supuesto: `SP_LIQUIDAR_CUOTA_ARANCEL` se corre cada mes. Si no se corre en un mes, la cuota de ese mes no se genera.
 
 ### 4.4 Restricciones pendientes de implementación
 
-- Participación total de `GRUPO_FAMILIAR` ↔ `SOCIO`: el SP cubre el alta, pero no evita borrar el último integrante ni el titular. Revisar si hace falta trigger.
+- Participación total de `GRUPO_FAMILIAR` ↔ `SOCIO`: `TR_SOCIO_BAJA_GRUPO` cubre la baja. Un `INSERT` directo puede saltear `SP_ALTA_GRUPO_FAMILIAR` (limitación).
 - Totalidad y coherencia de la jerarquía `ACTIVIDAD` (TODO 2): hoy sólo hay CHECK de `tipo`. Requiere decisión del grupo.
 - Baja de inscripciones al cambiar de categoría (H12, TODO 5). Requiere decisión sobre borrar filas o agregar estado.
 
 ### 4.5 Aplicación host
 
-Enunciado (funcionalidad e): aplicación sencilla en un lenguaje host que acceda a la base y haga una operación con transacciones, por ejemplo la inscripción de un socio a una actividad. No hay decisión de lenguaje ni de estructura todavía.
+Enunciado (funcionalidad e): aplicación sencilla en un lenguaje host que acceda a la base y haga una operación con transacciones. **Fuera de alcance por ahora** (decisión del equipo de trabajo). Se retoma más adelante.
 
 ### 4.6 Entregables de documentación (enunciado a–e)
 
@@ -155,8 +167,7 @@ Todas en [pendientes_diseno.md](pendientes_diseno.md). Resumen:
 
 ## 6. Problemas conocidos
 
-- `02_insercion_datos.sql`: el `DELETE` borra `SOCIO` antes que `INSCRIPCION` y no borra las tablas de actividades. Hoy no molesta porque `00` recrea la base, pero rompe si se corre `02` sobre datos existentes. Hay que ordenarlo al agregar `CUOTA_ARANCEL`.
-- `01_creacion_tablas.sql`: el `DROP` inicial tiene las tablas de la 4.1 que todavía no existen (`DICTADO_DIA`, `A_CARGO_DE`, `SE_DESARROLLA_EN`, `CUOTA_ARANCEL`). Agregarlas al crearlas.
+- `02_insercion_datos.sql`: sólo corre sobre base recién creada por `00`. Los `DELETE` ya van en orden inverso de dependencias, pero la re-carga falla igual por la `IDENTITY` de `GRUPO_FAMILIAR`.
 - `03_logica_socios_cuotas.sql`: `TR_SOCIO_TITULAR_CATEGORIA` tiene `'Infantil'` literal. Si cambian las categorías (TODO 6), hay que actualizar el trigger.
 - `04_datos_logica_socios_cuotas.sql`: no borra nada. Si se corre sobre una base con datos, falla por claves duplicadas. Correr siempre después de `00`.
 - Los grupos de `02` no tienen titular con `nro_orden = 0`. No aparecen en la consulta de deuda (`SP_CONSULTA_TITULARES_DEUDA`), aunque sí tienen cuotas.
@@ -164,9 +175,12 @@ Todas en [pendientes_diseno.md](pendientes_diseno.md). Resumen:
 
 ## 7. Próximos pasos sugeridos
 
-1. Crear `DICTADO_DIA`, `A_CARGO_DE` y `SE_DESARROLLA_EN` en `01`, con su DROP y comentario de esquema.
-2. Agregar los triggers de cronograma (§4.2 de este spec).
-3. Crear `CUOTA_ARANCEL` y el SP de inscripción transaccional con generación de cuotas (§4.3).
-4. Definir la aplicación host y el lenguaje.
-5. Completar los entregables a–e (§4.6).
-6. Resolver los TODO de §5 con el equipo.
+Hecho en el plan de faltantes: triggers de cronograma, arancel, participación total, `DELETE` de `02`, datos y pruebas en `04`.
+
+Pendiente:
+
+1. Completar los entregables a–e (§4.6).
+2. Resolver los TODO de §5 con el equipo (se retoman más adelante).
+3. Decidir H12 (TODO 5) y TODO 6 con el equipo.
+
+La aplicación host queda fuera de este plan.
