@@ -14,19 +14,17 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    IF EXISTS (
-        SELECT 1
+    IF (
+        SELECT COUNT(*)
         FROM inserted i
         INNER JOIN SOCIO s
             ON s.nro_socio_base = i.nro_socio_base
            AND s.nro_orden = i.nro_orden
-        WHERE NOT EXISTS (
-            SELECT 1
-            FROM HABILITADA_PARA h
-            WHERE h.cod_actividad = i.cod_actividad
-              AND h.nombre_categoria = s.nombre_categoria
-        )
-    )
+        LEFT JOIN HABILITADA_PARA h
+            ON h.cod_actividad = i.cod_actividad
+           AND h.nombre_categoria = s.nombre_categoria
+        WHERE h.cod_actividad IS NULL
+    ) > 0
     BEGIN
         THROW 50001, 'El socio no puede inscribirse: la actividad no está habilitada para su categoría.', 1;
     END;
@@ -45,8 +43,8 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    IF EXISTS (
-        SELECT 1
+    IF (
+        SELECT COUNT(*)
         FROM (
             SELECT fecha_desde,
                    fecha_hasta,
@@ -55,7 +53,7 @@ BEGIN
         ) periodos
         WHERE (siguiente_desde IS NOT NULL
                AND (fecha_hasta IS NULL OR fecha_hasta <> DATEADD(DAY, -1, siguiente_desde)))
-    )
+    ) > 0
     BEGIN
         THROW 50002, 'Los períodos de VALOR_CUOTA_SOCIAL se superponen o dejan huecos.', 1;
     END;
@@ -73,12 +71,12 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    IF EXISTS (
-        SELECT 1
+    IF (
+        SELECT COUNT(*)
         FROM inserted
         WHERE nro_orden = 0
           AND nombre_categoria = 'Infantil'
-    )
+    ) > 0
     BEGIN
         THROW 50003, 'El titular de un grupo familiar no puede pertenecer a la categoría Infantil.', 1;
     END;
@@ -162,13 +160,11 @@ BEGIN
         FROM SOCIO s
         INNER JOIN CATEGORIA c
             ON c.nombre_categoria = s.nombre_categoria
-        WHERE NOT EXISTS (
-            SELECT 1
-            FROM CUOTA_SOCIAL cs
-            WHERE cs.nro_socio_base = s.nro_socio_base
-              AND cs.anio = @anio
-              AND cs.mes = @mes
-        )
+        LEFT JOIN CUOTA_SOCIAL cs
+            ON cs.nro_socio_base = s.nro_socio_base
+           AND cs.anio = @anio
+           AND cs.mes = @mes
+        WHERE cs.nro_socio_base IS NULL
         GROUP BY s.nro_socio_base;
 
         COMMIT TRANSACTION;
@@ -260,41 +256,39 @@ GO
 -- Lista los pares de dictados en conflicto. Los triggers de cronograma consultan esta vista.
 CREATE OR ALTER VIEW VW_CONFLICTOS_DICTADO
 AS
-SELECT d1.cod_dictado AS cod_dictado_1,
-       d2.cod_dictado AS cod_dictado_2
-FROM DICTADO d1
-INNER JOIN DICTADO d2
-    ON d2.cod_dictado > d1.cod_dictado
-WHERE d1.fecha_desde <= d2.fecha_fin
-  AND d2.fecha_desde <= d1.fecha_fin
-  AND d1.hora_inicio < d2.hora_fin
-  AND d2.hora_inicio < d1.hora_fin
-  AND EXISTS (
-      SELECT 1
-      FROM DICTADO_DIA x
-      INNER JOIN DICTADO_DIA y
-          ON y.dia_semana = x.dia_semana
-      WHERE x.cod_dictado = d1.cod_dictado
-        AND y.cod_dictado = d2.cod_dictado
-  )
-  AND (
-      EXISTS (
-          SELECT 1
-          FROM SE_DESARROLLA_EN x
-          INNER JOIN SE_DESARROLLA_EN y
-              ON y.cod_area = x.cod_area
-          WHERE x.cod_dictado = d1.cod_dictado
-            AND y.cod_dictado = d2.cod_dictado
-      )
-      OR EXISTS (
-          SELECT 1
-          FROM A_CARGO_DE x
-          INNER JOIN A_CARGO_DE y
-              ON y.dni = x.dni
-          WHERE x.cod_dictado = d1.cod_dictado
-            AND y.cod_dictado = d2.cod_dictado
-      )
-  );
+WITH coincidencias_dia_horario AS (
+    SELECT DISTINCT d1.cod_dictado AS cod_dictado_1,
+                    d2.cod_dictado AS cod_dictado_2
+    FROM DICTADO d1
+    INNER JOIN DICTADO d2
+        ON d2.cod_dictado > d1.cod_dictado
+    INNER JOIN DICTADO_DIA x
+        ON x.cod_dictado = d1.cod_dictado
+    INNER JOIN DICTADO_DIA y
+        ON y.cod_dictado = d2.cod_dictado
+       AND y.dia_semana = x.dia_semana
+    WHERE d1.fecha_desde <= d2.fecha_fin
+      AND d2.fecha_desde <= d1.fecha_fin
+      AND d1.hora_inicio < d2.hora_fin
+      AND d2.hora_inicio < d1.hora_fin
+)
+SELECT c.cod_dictado_1,
+       c.cod_dictado_2
+FROM coincidencias_dia_horario c
+INNER JOIN SE_DESARROLLA_EN x
+    ON x.cod_dictado = c.cod_dictado_1
+INNER JOIN SE_DESARROLLA_EN y
+    ON y.cod_dictado = c.cod_dictado_2
+   AND y.cod_area = x.cod_area
+UNION
+SELECT c.cod_dictado_1,
+       c.cod_dictado_2
+FROM coincidencias_dia_horario c
+INNER JOIN A_CARGO_DE x
+    ON x.cod_dictado = c.cod_dictado_1
+INNER JOIN A_CARGO_DE y
+    ON y.cod_dictado = c.cod_dictado_2
+   AND y.dni = x.dni;
 GO
 
 
@@ -307,18 +301,16 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    IF EXISTS (
-        SELECT 1
+    IF (
+        SELECT COUNT(*)
         FROM inserted i
         INNER JOIN DICTADO d
             ON d.cod_dictado = i.cod_dictado
-        WHERE NOT EXISTS (
-            SELECT 1
-            FROM PUEDE_DESEMPENIARSE_EN p
-            WHERE p.dni = i.dni
-              AND p.cod_actividad = d.cod_actividad
-        )
-    )
+        LEFT JOIN PUEDE_DESEMPENIARSE_EN p
+            ON p.dni = i.dni
+           AND p.cod_actividad = d.cod_actividad
+        WHERE p.dni IS NULL
+    ) > 0
     BEGIN
         THROW 50005, 'El profesional no puede dictar esta actividad: no está habilitado para desempeñarse en ella.', 1;
     END;
@@ -335,18 +327,16 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    IF EXISTS (
-        SELECT 1
+    IF (
+        SELECT COUNT(*)
         FROM inserted i
         INNER JOIN DICTADO d
             ON d.cod_dictado = i.cod_dictado
-        WHERE NOT EXISTS (
-            SELECT 1
-            FROM APTA_PARA a
-            WHERE a.cod_area = i.cod_area
-              AND a.cod_actividad = d.cod_actividad
-        )
-    )
+        LEFT JOIN APTA_PARA a
+            ON a.cod_area = i.cod_area
+           AND a.cod_actividad = d.cod_actividad
+        WHERE a.cod_area IS NULL
+    ) > 0
     BEGIN
         THROW 50006, 'El área no es apta para la actividad del dictado.', 1;
     END;
@@ -363,7 +353,7 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    IF EXISTS (SELECT 1 FROM VW_CONFLICTOS_DICTADO)
+    IF (SELECT COUNT(*) FROM VW_CONFLICTOS_DICTADO) > 0
         THROW 50007, 'El dictado se solapa con otro en día, horario y período, con un área o profesional en común.', 1;
 END;
 GO
@@ -375,7 +365,7 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    IF EXISTS (SELECT 1 FROM VW_CONFLICTOS_DICTADO)
+    IF (SELECT COUNT(*) FROM VW_CONFLICTOS_DICTADO) > 0
         THROW 50007, 'El dictado se solapa con otro en día, horario y período, con un área o profesional en común.', 1;
 END;
 GO
@@ -387,7 +377,7 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    IF EXISTS (SELECT 1 FROM VW_CONFLICTOS_DICTADO)
+    IF (SELECT COUNT(*) FROM VW_CONFLICTOS_DICTADO) > 0
         THROW 50007, 'El dictado se solapa con otro en día, horario y período, con un área o profesional en común.', 1;
 END;
 GO
@@ -399,7 +389,7 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    IF EXISTS (SELECT 1 FROM VW_CONFLICTOS_DICTADO)
+    IF (SELECT COUNT(*) FROM VW_CONFLICTOS_DICTADO) > 0
         THROW 50007, 'El dictado se solapa con otro en día, horario y período, con un área o profesional en común.', 1;
 END;
 GO
@@ -414,15 +404,13 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    IF EXISTS (
-        SELECT 1
+    IF (
+        SELECT COUNT(*)
         FROM inserted c
-        WHERE NOT EXISTS (
-            SELECT 1
-            FROM ACTIVIDAD_ARANCELADA a
-            WHERE a.cod_actividad = c.cod_actividad
-        )
-    )
+        LEFT JOIN ACTIVIDAD_ARANCELADA a
+            ON a.cod_actividad = c.cod_actividad
+        WHERE a.cod_actividad IS NULL
+    ) > 0
     BEGIN
         THROW 50008, 'Sólo las inscripciones a actividades aranceladas pueden generar cuotas de arancel.', 1;
     END;
@@ -440,34 +428,26 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    IF EXISTS (
-        SELECT 1
+    IF (
+        SELECT COUNT(*)
         FROM deleted d
+        INNER JOIN SOCIO s
+            ON s.nro_socio_base = d.nro_socio_base
         WHERE d.nro_orden = 0
-          AND EXISTS (
-              SELECT 1
-              FROM SOCIO s
-              WHERE s.nro_socio_base = d.nro_socio_base
-          )
-    )
+    ) > 0
     BEGIN
         THROW 50009, 'No se puede dar de baja el titular mientras el grupo tenga integrantes.', 1;
     END;
 
-    IF EXISTS (
-        SELECT 1
+    IF (
+        SELECT COUNT(*)
         FROM deleted d
-        WHERE EXISTS (
-              SELECT 1
-              FROM GRUPO_FAMILIAR g
-              WHERE g.nro_socio_base = d.nro_socio_base
-          )
-          AND NOT EXISTS (
-              SELECT 1
-              FROM SOCIO s
-              WHERE s.nro_socio_base = d.nro_socio_base
-          )
-    )
+        INNER JOIN GRUPO_FAMILIAR g
+            ON g.nro_socio_base = d.nro_socio_base
+        LEFT JOIN SOCIO s
+            ON s.nro_socio_base = d.nro_socio_base
+        WHERE s.nro_socio_base IS NULL
+    ) > 0
     BEGIN
         THROW 50010, 'No se puede dar de baja el último integrante de un grupo familiar.', 1;
     END;
@@ -550,16 +530,14 @@ BEGIN
                NULL,
                NULL
         FROM vencimientos v
+        LEFT JOIN CUOTA_ARANCEL c
+            ON c.nro_socio_base = v.nro_socio_base
+           AND c.nro_orden = v.nro_orden
+           AND c.cod_actividad = v.cod_actividad
+           AND c.nro_cuota = v.meses_transcurridos / v.meses_por_cuota + 1
         WHERE v.meses_transcurridos >= 0
           AND v.meses_transcurridos % v.meses_por_cuota = 0
-          AND NOT EXISTS (
-              SELECT 1
-              FROM CUOTA_ARANCEL c
-              WHERE c.nro_socio_base = v.nro_socio_base
-                AND c.nro_orden = v.nro_orden
-                AND c.cod_actividad = v.cod_actividad
-                AND c.nro_cuota = v.meses_transcurridos / v.meses_por_cuota + 1
-          );
+          AND c.nro_socio_base IS NULL;
 
         COMMIT TRANSACTION;
     END TRY
