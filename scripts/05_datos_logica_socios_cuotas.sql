@@ -1,8 +1,8 @@
 USE ClubDeportivo;
 GO
 
--- Datos de prueba para los triggers, SP y vistas de 03_logica_socios_cuotas.sql.
--- Se ejecuta después de 02 (base recién creada por 00). Usa nro_socio_base generados por SP_ALTA_GRUPO_FAMILIAR.
+-- Datos de prueba para los triggers, SP y vistas de 03_logica_socios_cuotas.sql y 04_logica_areas_profesionales.sql.
+-- Se ejecuta después de 04 (base recién creada por 00). Usa nro_socio_base generados por SP_ALTA_GRUPO_FAMILIAR.
 -- Los titulares de los grupos de 02 tienen nro_orden = 0, así que también aparecen en SP_CONSULTA_TITULARES_DEUDA.
 
 DECLARE @id_a INT;

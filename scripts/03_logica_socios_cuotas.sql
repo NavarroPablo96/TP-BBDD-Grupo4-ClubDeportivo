@@ -81,8 +81,10 @@ BEGIN
     END;
 END;
 GO
+
+
 -- TR_CUOTA_ARANCEL_ACTIVIDAD_ARANCELADA
--- §4.2: Sólo generan cuota de arancel las inscripciones a actividades aranceladas
+-- §4.2 y H9: sólo las inscripciones a actividades aranceladas generan cuotas de arancel.
 CREATE OR ALTER TRIGGER TR_CUOTA_ARANCEL_ACTIVIDAD_ARANCELADA
 ON CUOTA_ARANCEL
 AFTER INSERT, UPDATE
@@ -90,17 +92,15 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    IF EXISTS (
-        SELECT 1
+    IF (
+        SELECT COUNT(*)
         FROM inserted i
-        WHERE NOT EXISTS (
-            SELECT 1
-            FROM ACTIVIDAD_ARANCELADA a
-            WHERE a.cod_actividad = i.cod_actividad
-        )
-    )
+        LEFT JOIN ACTIVIDAD_ARANCELADA a
+            ON a.cod_actividad = i.cod_actividad
+        WHERE a.cod_actividad IS NULL
+    ) > 0
     BEGIN
-        THROW 50004, 'Solo las inscripciones a actividades aranceladas generan cuotas de arancel.', 1;
+        THROW 50008, 'Sólo las inscripciones a actividades aranceladas pueden generar cuotas de arancel.', 1;
     END;
 END;
 GO
@@ -314,56 +314,8 @@ INNER JOIN A_CARGO_DE y
 GO
 
 
--- TR_A_CARGO_DE_PROFESIONAL_ACTIVIDAD
--- §4.2: el profesional a cargo de un dictado debe poder desempeñarse en su actividad (PUEDE_DESEMPENIARSE_EN).
-CREATE OR ALTER TRIGGER TR_A_CARGO_DE_PROFESIONAL_ACTIVIDAD
-ON A_CARGO_DE
-AFTER INSERT, UPDATE
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    IF (
-        SELECT COUNT(*)
-        FROM inserted i
-        INNER JOIN DICTADO d
-            ON d.cod_dictado = i.cod_dictado
-        LEFT JOIN PUEDE_DESEMPENIARSE_EN p
-            ON p.dni = i.dni
-           AND p.cod_actividad = d.cod_actividad
-        WHERE p.dni IS NULL
-    ) > 0
-    BEGIN
-        THROW 50005, 'El profesional no puede dictar esta actividad: no está habilitado para desempeñarse en ella.', 1;
-    END;
-END;
-GO
-
-
--- TR_SE_DESARROLLA_EN_AREA_APTA
--- §4.2: el área donde se desarrolla un dictado debe ser apta para su actividad (APTA_PARA).
-CREATE OR ALTER TRIGGER TR_SE_DESARROLLA_EN_AREA_APTA
-ON SE_DESARROLLA_EN
-AFTER INSERT, UPDATE
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    IF (
-        SELECT COUNT(*)
-        FROM inserted i
-        INNER JOIN DICTADO d
-            ON d.cod_dictado = i.cod_dictado
-        LEFT JOIN APTA_PARA a
-            ON a.cod_area = i.cod_area
-           AND a.cod_actividad = d.cod_actividad
-        WHERE a.cod_area IS NULL
-    ) > 0
-    BEGIN
-        THROW 50006, 'El área no es apta para la actividad del dictado.', 1;
-    END;
-END;
-GO
+-- Los triggers de profesional habilitado y área apta (TR_A_CARGO_DE_PROF_HABILITADO y
+-- TR_SE_DESARROLLA_EN_AREA_APTA) están en 04_logica_areas_profesionales.sql.
 
 
 -- TR_DICTADO_SOLAPAMIENTO (una por tabla que participa del conflicto)
@@ -413,29 +365,6 @@ BEGIN
 
     IF (SELECT COUNT(*) FROM VW_CONFLICTOS_DICTADO) > 0
         THROW 50007, 'El dictado se solapa con otro en día, horario y período, con un área o profesional en común.', 1;
-END;
-GO
-
-
--- TR_CUOTA_ARANCEL_ACTIVIDAD_ARANCELADA
--- §4.2 y H9: sólo las inscripciones a actividades aranceladas generan cuotas de arancel.
-CREATE OR ALTER TRIGGER TR_CUOTA_ARANCEL_ACTIVIDAD_ARANCELADA
-ON CUOTA_ARANCEL
-AFTER INSERT, UPDATE
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    IF (
-        SELECT COUNT(*)
-        FROM inserted c
-        LEFT JOIN ACTIVIDAD_ARANCELADA a
-            ON a.cod_actividad = c.cod_actividad
-        WHERE a.cod_actividad IS NULL
-    ) > 0
-    BEGIN
-        THROW 50008, 'Sólo las inscripciones a actividades aranceladas pueden generar cuotas de arancel.', 1;
-    END;
 END;
 GO
 

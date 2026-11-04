@@ -2,7 +2,7 @@ USE ClubDeportivo;
 GO
 
 
--- Orden inverso de dependencias. Incluye las tablas que cargan 03 y 04.
+-- Orden inverso de dependencias. Incluye las tablas que cargan 03 y 05.
 DELETE FROM CUOTA_ARANCEL;
 DELETE FROM A_CARGO_DE;
 DELETE FROM SE_DESARROLLA_EN;

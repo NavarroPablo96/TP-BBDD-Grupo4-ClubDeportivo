@@ -50,7 +50,7 @@ Si se garantiza la coherencia del tipo en ambas subentidades, también se garant
 
 ## TODO 4: Validar supuestos de tipos de `PROFESIONAL` y `AREA`
 
-**Estado:** APLICADO en `01`, `03` y `04`. Como `dni` y `cod_area` son PK (únicos), no se agregó `UNIQUE` redundante. Se probó `dni` como `VARCHAR(12)` y el usuario decidió volver a `INT`.
+**Estado:** APLICADO en `01`, `03` y `05`. Como `dni` y `cod_area` son PK (únicos), no se agregó `UNIQUE` redundante. Se probó `dni` como `VARCHAR(12)` y el usuario decidió volver a `INT`.
 
 - [x] `PROFESIONAL.dni` queda `INT` con `CK_PROFESIONAL_DNI CHECK (dni > 0)` (como en el supuesto original).
 - [x] `AREA.capacidad` con `CHECK (capacidad >= 0)` (confirmado).
@@ -68,11 +68,11 @@ H12 dice que al cambiar la categoría de un socio se dan de baja sus inscripcion
 
 ## TODO 6: Categorías y `nro_orden` de los datos frente a §4.2 y H1
 
-**Estado:** APLICADO en `02`, `03` y `04`. Categorías `infantiles` (-30.00) / `mayores` (0.00) / `vitalicios` (-15.00); mapeo: Infantil → infantiles, Juvenil y Adulto → mayores, Jubilado → vitalicios. Titulares con `nro_orden = 0` en `02`. `TR_SOCIO_TITULAR_CATEGORIA` usa `'infantiles'`. Porcentajes y mapeo son decisión del usuario, no figuran en el enunciado.
+**Estado:** APLICADO en `02`, `03` y `05`. Categorías `infantiles` (-30.00) / `mayores` (0.00) / `vitalicios` (-15.00); mapeo: Infantil → infantiles, Juvenil y Adulto → mayores, Jubilado → vitalicios. Titulares con `nro_orden = 0` en `02`. `TR_SOCIO_TITULAR_CATEGORIA` usa `'infantiles'`. Porcentajes y mapeo son decisión del usuario, no figuran en el enunciado.
 
 Situación previa (resuelta): los datos usaban `Infantil/Juvenil/Adulto/Jubilado` y numeraban `nro_orden` desde 1, y `SP_CONSULTA_TITULARES_DEUDA` dejaba afuera los grupos de `02`.
 
-- [x] Acordar la nomenclatura de categorías y corregirla en `CATEGORIA`, `02`, `03` y `04`.
+- [x] Acordar la nomenclatura de categorías y corregirla en `CATEGORIA`, `02`, `03` y `05`.
 - [x] Corregir la numeración de los titulares de `02`.
 - [x] `CK_CATEGORIA_NOMBRE` en `CATEGORIA`: sólo `infantiles`, `mayores`, `vitalicios` (§4.2). Si el grupo cambia los nombres, hay que actualizar este CHECK y `TR_SOCIO_TITULAR_CATEGORIA`.
 - [x] `CK_SOCIO_NRO_ORDEN` en `SOCIO`: `nro_orden >= 0`. Sigue sin garantizarse en `SOCIO` que cada grupo tenga exactamente un titular: lo cubren `SP_ALTA_GRUPO_FAMILIAR` y `TR_SOCIO_BAJA_GRUPO`, y un `INSERT` directo puede saltearlos.
@@ -104,5 +104,5 @@ Situación previa (resuelta): los datos usaban `Infantil/Juvenil/Adulto/Jubilado
 - `SP_CONSULTA_SOCIOS_GRATUITAS (@anio)`: año de `fecha_inscripcion` a considerar. El llamador pasa el año anterior para cumplir el enunciado.
 
 - [x] Decidir: stored procedure para cada consulta.
-- [x] Definir el parámetro de año y actualizar `03_logica_socios_cuotas.sql` y `04_datos_logica_socios_cuotas.sql`.
+- [x] Definir el parámetro de año y actualizar `03_logica_socios_cuotas.sql` y `05_datos_logica_socios_cuotas.sql`.
 - [ ] Confirmar con el equipo si el criterio de "año pasado" queda en el parámetro (ver TODO 8). ABIERTO: el usuario lo va a consultar junto con el TODO 8.

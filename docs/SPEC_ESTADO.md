@@ -16,14 +16,15 @@ Orden obligatorio (cada uno depende del anterior). Los scripts están en `script
 | `01_creacion_tablas.sql` | Crea las tablas, con sus constraints. |
 | `02_insercion_datos.sql` | Carga datos base: categorías, grupos, socios y valores de cuota social. |
 | `03_logica_socios_cuotas.sql` | Triggers, stored procedures y consultas de socios y cuotas. Se puede volver a correr (`CREATE OR ALTER`). |
-| `04_datos_logica_socios_cuotas.sql` | Datos de prueba para `03`: actividades, habilitaciones, grupos, cuotas e inscripciones. Asume que se corre justo después de `02` sobre una base recién creada. |
+| `04_logica_areas_profesionales.sql` | Triggers de profesional habilitado y área apta de los dictados. Se puede volver a correr (`CREATE OR ALTER`). Va antes de `05`. |
+| `05_datos_logica_socios_cuotas.sql` | Datos de prueba para `03` y `04`: actividades, habilitaciones, grupos, cuotas e inscripciones. Asume que se corre justo después de `02` sobre una base recién creada. |
 
 Comando (LocalDB, autenticación de Windows):
 
 Desde la raíz del repo:
 
 ```bash
-sqlcmd -S "(localdb)\MSSQLLocalDB" -E -b -i scripts/00_creacion_bd.sql -i scripts/01_creacion_tablas.sql -i scripts/02_insercion_datos.sql -i scripts/03_logica_socios_cuotas.sql -i scripts/04_datos_logica_socios_cuotas.sql
+sqlcmd -S "(localdb)\MSSQLLocalDB" -E -b -i scripts/00_creacion_bd.sql -i scripts/01_creacion_tablas.sql -i scripts/02_insercion_datos.sql -i scripts/03_logica_socios_cuotas.sql -i scripts/04_logica_areas_profesionales.sql -i scripts/05_datos_logica_socios_cuotas.sql
 ```
 
 Connection string para SSMS / clientes (LocalDB):
@@ -63,8 +64,9 @@ Triggers:
 - `TR_VALOR_CUOTA_SOCIAL_VIGENCIA` (sobre `VALOR_CUOTA_SOCIAL`): los períodos no se superponen ni dejan huecos (§4.2).
 - `TR_SOCIO_TITULAR_CATEGORIA` (sobre `SOCIO`): el titular (`nro_orden = 0`) no puede ser `infantiles` (§4.2). Usa `'infantiles'` literal.
 - `TR_ACTIVIDAD_ARANCELADA_TIPO` (50011), `TR_ACTIVIDAD_GRATUITA_TIPO` (50012) y `TR_ACTIVIDAD_TIPO_INMUTABLE` (50013): coherencia y exclusividad de la jerarquía de `ACTIVIDAD` (TODO 2).
-- `TR_A_CARGO_DE_PROFESIONAL_ACTIVIDAD` (sobre `A_CARGO_DE`): el profesional debe estar en `PUEDE_DESEMPENIARSE_EN` para la actividad del dictado (§4.2). Error 50005.
-- `TR_SE_DESARROLLA_EN_AREA_APTA` (sobre `SE_DESARROLLA_EN`): el área debe estar en `APTA_PARA` para la actividad del dictado (§4.2). Error 50006.
+- En `04_logica_areas_profesionales.sql` (aporte de un compañero, adaptado a los códigos y al estilo de `03`):
+  - `TR_A_CARGO_DE_PROF_HABILITADO` (sobre `A_CARGO_DE`): el profesional debe estar en `PUEDE_DESEMPENIARSE_EN` para la actividad del dictado (§4.2). Error 50005.
+  - `TR_SE_DESARROLLA_EN_AREA_APTA` (sobre `SE_DESARROLLA_EN`): el área debe estar en `APTA_PARA` para la actividad del dictado (§4.2). Error 50006.
 - `TR_DICTADO_SOLAPAMIENTO_*` (sobre `DICTADO`, `DICTADO_DIA`, `A_CARGO_DE`, `SE_DESARROLLA_EN`): no hay dos dictados que coincidan en día, horario y período con un área o profesional en común. Consultan la vista `VW_CONFLICTOS_DICTADO`. Error 50007.
 - `TR_CUOTA_ARANCEL_ACTIVIDAD_ARANCELADA` (sobre `CUOTA_ARANCEL`): sólo las actividades aranceladas generan cuotas de arancel (§4.2, H9). Error 50008.
 - `TR_SOCIO_BAJA_GRUPO` (sobre `SOCIO`, al borrar): el titular no se da de baja mientras el grupo tenga integrantes (50009), y un grupo no queda sin integrantes (50010). No aplica al borrar el grupo completo por cascada.
@@ -86,7 +88,7 @@ Las consultas también son SP, con año como parámetro, por decisión del usuar
 ### 3.3 Datos de prueba
 
 - `02_insercion_datos.sql`: 3 categorías (`infantiles` -30, `mayores` 0, `vitalicios` -15), 5 grupos (8 socios, titulares con `nro_orden = 0`), 4 valores de cuota social (2025 y 2026). Sin `CUOTA_SOCIAL`, sin actividades, sin inscripciones.
-- `04_datos_logica_socios_cuotas.sql`: 3 grupos nuevos (Marta Ruiz, Pablo Diaz, Elena Sosa), 2 actividades gratuitas (201, 202), 1 arancelada (301), habilitaciones, cuotas de enero a marzo 2026 con pagos completos, parciales y sin pagar, e inscripciones de 2025 y 2026.
+- `05_datos_logica_socios_cuotas.sql`: 3 grupos nuevos (Marta Ruiz, Pablo Diaz, Elena Sosa), 2 actividades gratuitas (201, 202), 1 arancelada (301), habilitaciones, cuotas de enero a marzo 2026 con pagos completos, parciales y sin pagar, e inscripciones de 2025 y 2026.
 
 Resultados esperados con estos datos:
 
@@ -95,13 +97,13 @@ Resultados esperados con estos datos:
 
 ### 3.4 Verificación hecha
 
-- `00` a `04` corren con exit 0, y `01` y `03` se pueden volver a correr sobre la base creada.
+- `00` a `05` corren con exit 0, y `01`, `03` y `04` se pueden volver a correr sobre la base creada.
 - Rechazos comprobados: inscripción no habilitada, vigencia superpuesta, hueco en vigencia, titular infantil y abonado mayor a pagar. El alta de titular infantil no deja filas en `GRUPO_FAMILIAR` (rollback del SP).
 - Liquidar dos veces el mismo mes no duplica cuotas. Los montos calculados coinciden con los esperados.
-- Reconstrucción limpia con `00` a `04` (exit 0). `03` se puede volver a correr (exit 0).
+- Reconstrucción limpia con `00` a `05` (exit 0). `03` y `04` se pueden volver a correr (exit 0).
 - Pruebas de rechazo y control dentro de `04` (bloques A–G, cada uno en transacción con `ROLLBACK`): 50005, 50006, 50007 (y el control D que pasa), 50008, 50009 y 50010. Imprimen el resultado.
 - Pruebas H–N en `04`: 50011, 50012 y 50013 rechazan, el alta por SP de actividades pasa (K), y los CHECK rechazan con error 547: `CK_PROFESIONAL_DNI` (dni 0), `CK_AREA_COD_AREA` (blanco y espacio inicial), `CK_CATEGORIA_NOMBRE` (categoría no permitida) y `CK_SOCIO_NRO_ORDEN` (nro_orden negativo). Los casos L–N corren en transacción con `ROLLBACK`.
-- Reconstrucción `00` a `04` con exit 0 y `03` re-ejecutable, tras aplicar TODO 2, 4 y 6.
+- Reconstrucción `00` a `05` con exit 0 y `03` y `04` re-ejecutables, tras aplicar TODO 2, 4 y 6 e integrar el PR de triggers de áreas y profesionales.
 - Arancel de control: la deuda de arancel de Marta (actividad 301) es 8000.00.
 - Re-correr `02` sobre una base cargada falla por diseño (`FK_SOCIO_GRUPO_FAMILIAR`): la `IDENTITY` de `GRUPO_FAMILIAR` no se reinicia. Los `DELETE` sí corren hasta ese punto. Re-correr `04` sobre datos cargados falla por claves duplicadas.
 
@@ -123,7 +125,7 @@ Ya no faltan tablas. Las cuatro de cronograma y arancel están en `01` con PK, F
 
 ### 4.2 Triggers y procedimientos de cronograma (implementados)
 
-- Profesional a cargo debe poder desempeñarse en la actividad: `TR_A_CARGO_DE_PROFESIONAL_ACTIVIDAD`.
+- Profesional a cargo debe poder desempeñarse en la actividad: `TR_A_CARGO_DE_PROF_HABILITADO` (en `04`).
 - Área del dictado debe ser apta para la actividad: `TR_SE_DESARROLLA_EN_AREA_APTA`.
 - Sin solapamiento de día, horario y período con área o profesional en común: `TR_DICTADO_SOLAPAMIENTO_*`.
 - Todo dictado con al menos un profesional a cargo (H13): `SP_ALTA_DICTADO`. Un `INSERT` directo puede saltear el SP (limitación).
@@ -174,7 +176,7 @@ Todas en [pendientes_diseno.md](pendientes_diseno.md). Resumen:
 
 - `02_insercion_datos.sql`: sólo corre sobre base recién creada por `00`. Los `DELETE` ya van en orden inverso de dependencias, pero la re-carga falla igual por la `IDENTITY` de `GRUPO_FAMILIAR`.
 - `03_logica_socios_cuotas.sql`: `TR_SOCIO_TITULAR_CATEGORIA` tiene `'infantiles'` literal. Si cambian las categorías, hay que actualizar el trigger.
-- `04_datos_logica_socios_cuotas.sql`: no borra nada. Si se corre sobre una base con datos, falla por claves duplicadas. Correr siempre después de `00`.
+- `05_datos_logica_socios_cuotas.sql`: no borra nada. Si se corre sobre una base con datos, falla por claves duplicadas. Correr siempre después de `00`.
 - Un `INSERT` directo en `ACTIVIDAD` o borrar una subentidad puede dejar una actividad sin clasificar (la totalidad la cubren los `SP_ALTA_ACTIVIDAD_*`).
 
 ## 7. Próximos pasos sugeridos
