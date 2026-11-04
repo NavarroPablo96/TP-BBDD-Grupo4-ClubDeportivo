@@ -31,8 +31,12 @@ CREATE TABLE CATEGORIA(
     porcentaje_mod_cuota DECIMAL(5,2),
 
     -- Clave Primaria
-    CONSTRAINT PK_CATEGORIA PRIMARY KEY(nombre_categoria)
-    
+    CONSTRAINT PK_CATEGORIA PRIMARY KEY(nombre_categoria),
+
+    -- §4.2: las categorías son únicamente infantiles, mayores y vitalicios
+    CONSTRAINT CK_CATEGORIA_NOMBRE
+        CHECK (nombre_categoria IN ('infantiles', 'mayores', 'vitalicios'))
+
 );
 GO
 
@@ -69,7 +73,10 @@ CREATE TABLE SOCIO(
         ON DELETE CASCADE,
 
     CONSTRAINT FK_SOCIO_CATEGORIA FOREIGN KEY(nombre_categoria)
-        REFERENCES CATEGORIA(nombre_categoria)
+        REFERENCES CATEGORIA(nombre_categoria),
+
+    -- H1 y §4.2: el titular tiene nro_orden = 0, los integrantes numeran desde 1
+    CONSTRAINT CK_SOCIO_NRO_ORDEN CHECK (nro_orden >= 0)
 
 );
 GO
@@ -137,7 +144,7 @@ CREATE TABLE ACTIVIDAD(
     CONSTRAINT PK_ACTIVIDAD PRIMARY KEY (cod_actividad),
 
     -- Validación tipo de actividad
-    -- TODO: garantizar la jerarquía total, exclusiva y coherente con tipo.
+    -- La jerarquía (coherencia, exclusividad, totalidad) se garantiza en 03: TR_ACTIVIDAD_*_TIPO y SP_ALTA_ACTIVIDAD_*.
     CONSTRAINT CK_ACTIVIDAD_tipo CHECK (tipo in ('A', 'G'))
 
 );
@@ -237,7 +244,7 @@ CREATE TABLE PROFESIONAL(
     -- Clave primaria
     CONSTRAINT PK_PROFESIONAL PRIMARY KEY (dni),
 
-    -- Validación DNI (supuesto: numérico positivo)
+    -- Validación DNI: numérico positivo (la unicidad la da la PK)
     CONSTRAINT CK_PROFESIONAL_DNI CHECK (dni > 0)
 );
 GO
@@ -245,7 +252,7 @@ GO
 -- AREA (cod_area, ubicacion, capacidad, estado_mantenimiento)
 -- PK = CK = {cod_area}
 CREATE TABLE AREA(
-    cod_area INT NOT NULL,
+    cod_area VARCHAR(20) NOT NULL,
     ubicacion VARCHAR(100) NOT NULL,
     capacidad INT NOT NULL,
     -- TODO: definir dominio de estado_mantenimiento (no especificado en el enunciado).
@@ -253,6 +260,11 @@ CREATE TABLE AREA(
 
     -- Clave primaria
     CONSTRAINT PK_AREA PRIMARY KEY (cod_area),
+
+    -- Código de área no vacío y sin espacios al inicio ni al final (la unicidad la da la PK)
+    CONSTRAINT CK_AREA_COD_AREA
+        CHECK (LEN(LTRIM(RTRIM(cod_area))) > 0
+               AND DATALENGTH(cod_area) = DATALENGTH(LTRIM(RTRIM(cod_area)))),
 
     -- Validación capacidad (supuesto: no negativa)
     CONSTRAINT CK_AREA_CAPACIDAD CHECK (capacidad >= 0)
@@ -281,7 +293,7 @@ GO
 -- APTA_PARA (cod_area, cod_actividad)
 -- PK = CK = {(cod_area, cod_actividad)} FK = {cod_area, cod_actividad}
 CREATE TABLE APTA_PARA(
-    cod_area INT NOT NULL,
+    cod_area VARCHAR(20) NOT NULL,
     cod_actividad INT NOT NULL,
 
     CONSTRAINT PK_APTA_PARA
@@ -372,7 +384,7 @@ GO
 -- PK = CK = {(cod_dictado,cod_area)} FK = {cod_dictado,cod_area}.
 CREATE TABLE SE_DESARROLLA_EN(
     cod_dictado INT NOT NULL,
-    cod_area INT NOT NULL,
+    cod_area VARCHAR(20) NOT NULL,
 
     -- Clave primaria
     CONSTRAINT PK_SE_DESARROLLA_EN

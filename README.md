@@ -10,7 +10,7 @@
 
 
 ### Estructura del repositorio
-- `scripts/`: scripts T-SQL, en orden de ejecución (`00` a `04`).
+- `scripts/`: scripts T-SQL, en orden de ejecución (`00` a `05`).
 - `docs/`: resolución del grupo, pendientes de diseño y spec de estado (`SPEC_ESTADO.md`).
 - `docs/referencias/`: enunciado, apunte de la cátedra y bibliografía.
 
@@ -20,7 +20,7 @@ Ejecutar en orden, desde SSMS o con `sqlcmd` desde la raíz del repo:
 2. `scripts/01_creacion_tablas.sql`
 3. `scripts/02_insercion_datos.sql`
 4. `scripts/03_logica_socios_cuotas.sql`
-5. `scripts/04_datos_logica_socios_cuotas.sql`
-6. `scripts/05.logica_areas_profesionales.sql`
+5. `scripts/04_logica_areas_profesionales.sql`
+6. `scripts/05_datos_logica_socios_cuotas.sql`
 
 Nota: el primer script elimina y vuelve a crear la base de datos ClubDeportivo si ya existe.
