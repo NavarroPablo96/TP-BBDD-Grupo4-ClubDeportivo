@@ -13,7 +13,7 @@ Registro de decisiones de diseño: qué está abierto, qué se decidió y qué q
 | 5 | Baja de inscripciones al cambiar de categoría (H12) | Aplicado; supuestos a confirmar con el grupo |
 | 6 | Categorías y `nro_orden` | Aplicado |
 | 7 | Vencimiento de la cuota social | Cerrado |
-| 8 | Consulta 2: "todas las gratuitas" y "año pasado" | **Abierto** (supuesto aplicado) |
+| 8 | Consulta 2: "todas las gratuitas" y "año pasado" | Parcial: caso vacío decidido (no devuelve filas); falta confirmar "año pasado" |
 | 9 | Consultas 1 y 2 como vistas | Aplicado (vistas con `YEAR(GETDATE())`); falta confirmar el criterio de la consulta 2 (ver TODO 8) |
 | 10 | Participaciones totales sin garantizar | Parcial: `DICTADO` → área por SP; el resto, limitación documentada |
 | 11 | Restricciones de cuotas que sólo cubren los SP | Aplicado: puesta al día en `SP_LIQUIDAR_CUOTA_ARANCEL`; el resto, limitación documentada |
@@ -60,17 +60,20 @@ Supuestos a confirmar con el grupo:
 
 ## TODO 8: Criterio de "todas las gratuitas" sin actividades gratuitas
 
-**Estado:** ABIERTO. El usuario lo va a consultar. Supuesto aplicado: `VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR` no cuenta a nadie si no hay actividades gratuitas ("todas" no se cumple en vacío).
+**Estado:** PARCIAL. El criterio del caso vacío lo decidió el usuario y está aplicado; falta confirmar "año pasado" con el grupo.
 
-- [ ] Confirmar el criterio con el equipo.
-- [ ] Confirmar si "año pasado" refiere al año de `fecha_inscripcion`.
+- Decidido: si no hay filas para mostrar, no se muestra nada. `VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR` usa `INNER JOIN` y sólo lista las categorías con al menos un socio que cumple. Sin actividades gratuitas ("todas" no se cumple en vacío) o sin socios que cumplan, no devuelve filas. Esto cambia el resultado anterior, que mostraba todas las categorías con 0.
+- Pendiente: "año pasado" se interpreta como `YEAR(GETDATE()) - 1` sobre `fecha_inscripcion`.
+
+- [x] Definir el criterio del caso vacío: la vista no devuelve filas (prueba S en `05`).
+- [ ] Confirmar con el equipo que "año pasado" refiere al año de `fecha_inscripcion`.
 
 ## TODO 9: Consultas 1 y 2 del enunciado como vistas
 
 **Estado:** APLICADO por decisión del usuario: vistas en `03_logica_socios_cuotas.sql` que usan `YEAR(GETDATE())`. Antes fueron vistas, después SP con parámetro `@anio`, y ahora vuelven a ser vistas para seguir el enunciado al pie de la letra ("año en curso" y "año pasado"). Se eliminan los SP anteriores con `DROP PROCEDURE IF EXISTS`.
 
 - `VW_TITULARES_DEUDA_ANIO_ACTUAL`: titulares con deuda `monto_a_pagar - ISNULL(monto_abonado, 0) > 0` en las cuotas sociales de `YEAR(GETDATE())`, con importe total e integrantes del grupo.
-- `VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR`: por categoría, socios con inscripciones de `YEAR(GETDATE()) - 1` (`fecha_inscripcion`) que cubren todas las filas de `ACTIVIDAD_GRATUITA`. Exige al menos una actividad gratuita (TODO 8) y cuenta también las inscripciones dadas de baja (TODO 5).
+- `VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR`: por categoría, socios con inscripciones de `YEAR(GETDATE()) - 1` (`fecha_inscripcion`) que cubren todas las filas de `ACTIVIDAD_GRATUITA`. Sólo muestra las categorías con al menos un socio que cumple, así que sin actividades gratuitas no devuelve filas (TODO 8). Cuenta también las inscripciones dadas de baja (TODO 5).
 - Para que los resultados esperados no dependan del año en que se corra, los períodos de `VALOR_CUOTA_SOCIAL` de `02` y las fechas de `05` son relativos al año actual.
 
 - [x] Decidir: vista para cada consulta, con `YEAR(GETDATE())` y `YEAR(GETDATE()) - 1`.

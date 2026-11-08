@@ -151,7 +151,7 @@ GO
 -- Resultados esperados:
 --   VW_TITULARES_DEUDA_ANIO_ACTUAL: Juan Perez 121500.00 (3); Carlos Gomez 90000.00 (2); Sofia Rodriguez 45000.00 (1);
 --     Roberto Fernandez 38250.00 (1); Laura Martinez 45000.00 (1); Pablo Diaz 30000.00 (1); Elena Sosa 78250.00 (2).
---   VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR: mayores 2 (Marta, Raul); el resto 0.
+--   VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR: una sola fila, mayores 2 (Marta, Raul); las categorías sin socios no se muestran.
 SELECT * FROM VW_TITULARES_DEUDA_ANIO_ACTUAL;
 SELECT * FROM VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR;
 GO
@@ -491,6 +491,22 @@ BEGIN TRY
 END TRY
 BEGIN CATCH
     PRINT 'Q: control FALLÓ ' + CAST(ERROR_NUMBER() AS VARCHAR(10)) + ' ' + ERROR_MESSAGE();
+    IF XACT_STATE() <> 0 ROLLBACK;
+END CATCH;
+GO
+
+-- S (control): sin actividades gratuitas la consulta 2 no devuelve filas.
+BEGIN TRY
+    BEGIN TRANSACTION;
+    DELETE FROM ACTIVIDAD_GRATUITA;
+    IF (SELECT COUNT(*) FROM VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR) = 0
+        PRINT 'S: control OK (sin gratuitas, la vista no devuelve filas)';
+    ELSE
+        PRINT 'S: control FALLÓ';
+    ROLLBACK;
+END TRY
+BEGIN CATCH
+    PRINT 'S: control FALLÓ ' + CAST(ERROR_NUMBER() AS VARCHAR(10)) + ' ' + ERROR_MESSAGE();
     IF XACT_STATE() <> 0 ROLLBACK;
 END CATCH;
 GO

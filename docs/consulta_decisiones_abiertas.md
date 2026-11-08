@@ -27,9 +27,9 @@ H12 dice que cuando un socio cambia de categoría, se dan de baja sus inscripcio
 
 ## 3. Consulta 2: "socios inscriptos en todas las actividades gratuitas el año pasado"
 
-* Si no existe ninguna actividad gratuita, "todas" se cumple en vacío y entrarían todos los socios. Proponemos que no cuente a nadie.
+* Decidido: si no hay filas para mostrar, no se muestra nada. La consulta sólo lista las categorías con al menos un socio que cumple; si no existe ninguna actividad gratuita ("todas" se cumpliría en vacío) o nadie cumple, no devuelve filas.
 * "Año pasado" lo interpretamos como el año de `fecha_inscripcion`: `YEAR(GETDATE()) - 1`.
-* Pregunta: ¿les parece bien, o lo consultamos con la cátedra?
+* Pregunta: ¿les parece bien lo de "año pasado", o lo consultamos con la cátedra?
 
 ## 4. Consultas 1 y 2 como vistas
 

@@ -86,7 +86,7 @@ Stored procedures:
 Vistas de las consultas del enunciado (decisión del usuario, TODO 9; se eliminan los SP anteriores con `DROP PROCEDURE IF EXISTS`):
 
 - `VW_TITULARES_DEUDA_ANIO_ACTUAL`: consulta 1. Titulares con deuda en las cuotas sociales de `YEAR(GETDATE())`, importe total e integrantes.
-- `VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR`: consulta 2. Socios por categoría inscriptos en todas las gratuitas durante `YEAR(GETDATE()) - 1`. Cuenta también las inscripciones dadas de baja y no cuenta a nadie si no hay actividades gratuitas (TODO 8).
+- `VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR`: consulta 2. Socios por categoría inscriptos en todas las gratuitas durante `YEAR(GETDATE()) - 1`. Cuenta también las inscripciones dadas de baja. Sólo muestra las categorías con al menos un socio que cumple: si no hay filas para mostrar (por ejemplo, sin actividades gratuitas) no devuelve nada (TODO 8).
 - `VW_CONFLICTOS_DICTADO`: pares de dictados en conflicto, para los triggers de solapamiento.
 
 ### 3.3 Lógica en `04_logica_areas_profesionales.sql`
@@ -106,7 +106,7 @@ Los códigos de error son únicos en todo `03` y `04` (50001 a 50014, con 50004 
 Resultados esperados con estos datos:
 
 - `VW_TITULARES_DEUDA_ANIO_ACTUAL`: Juan Perez 121500.00 (3), Carlos Gomez 90000.00 (2), Sofia Rodriguez 45000.00 (1), Roberto Fernandez 38250.00 (1), Laura Martinez 45000.00 (1), Pablo Diaz 30000.00 (1), Elena Sosa 78250.00 (2).
-- `VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR`: mayores 2, el resto 0.
+- `VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR`: una sola fila, mayores 2. Las categorías sin socios no se muestran.
 - Deuda de arancel de Marta (actividad 301): 8000.00.
 
 ### 3.5 Verificación hecha
@@ -120,6 +120,7 @@ Resultados esperados con estos datos:
   - P1 y P2: reinscripción tras una baja (pasa) y segunda inscripción activa en la misma actividad (50014).
   - Q: puesta al día, cuotas 1 a 4 correlativas al liquidar abril sin haber liquidado antes, sin duplicar al repetir.
   - R: `SP_ALTA_DICTADO` con un área no apta rechaza 50006 y no deja filas.
+  - S: sin actividades gratuitas, `VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR` no devuelve filas.
 - Liquidar dos veces el mismo mes no duplica cuotas. Los montos calculados coinciden con los esperados.
 - El alta de un titular infantil no deja filas en `GRUPO_FAMILIAR` (rollback del SP).
 - Re-correr `02` sobre una base cargada falla por diseño (`FK_SOCIO_GRUPO_FAMILIAR`): la `IDENTITY` de `GRUPO_FAMILIAR` no se reinicia. Re-correr `05` sobre datos cargados falla por claves duplicadas.
@@ -131,7 +132,7 @@ Resultados esperados con estos datos:
 Detalle en [pendientes_diseno.md](pendientes_diseno.md). No implementar ni asumir sin el equipo.
 
 - TODO 3: dominio de `AREA.estado_mantenimiento` (y confirmar que es monovaluado). Hoy es texto libre; los datos de `05` usan `'Bueno'`, que quedaría inválido con un CHECK.
-- TODO 8 y 9: consulta 2, "todas las gratuitas" sin actividades y criterio de "año pasado".
+- TODO 8: confirmar que "año pasado" es el año de `fecha_inscripcion` (`YEAR(GETDATE()) - 1`). El caso vacío ya está decidido: la consulta 2 no devuelve filas.
 - Supuestos del TODO 5 a confirmar: la baja corta las cuotas de arancel, las bajas cuentan en la consulta 2 y reinscribirse crea una fila nueva.
 - TODO 12: correcciones a la resolución entregada (§3.2, §4.1, §5.1.1, §5.1.15 y H9 vs §4.2 l.219).
 
@@ -167,8 +168,8 @@ Todas en [pendientes_diseno.md](pendientes_diseno.md).
 | 5 | Baja de inscripciones al cambiar categoría (H12) | Aplicado: `estado` y `fecha_baja` en `INSCRIPCION`, PK con `fecha_inscripcion`. Supuestos a confirmar. |
 | 6 | Categorías y `nro_orden` | Aplicado: `infantiles/mayores/vitalicios` y titular en 0. |
 | 7 | Vencimiento de la cuota social | Cerrado: último día del mes. |
-| 8 | "Todas las gratuitas" sin actividades y "año pasado" | **Abierto**; el usuario lo consulta. Supuesto aplicado. |
-| 9 | Consultas 1 y 2 como vistas | Aplicado: vistas con `YEAR(GETDATE())`. Falta confirmar el criterio de la consulta 2 (ver TODO 8). |
+| 8 | "Todas las gratuitas" sin actividades y "año pasado" | Parcial: el caso vacío no devuelve filas (decidido); falta confirmar "año pasado". |
+| 9 | Consultas 1 y 2 como vistas | Aplicado: vistas con `YEAR(GETDATE())`. |
 | 10 | Participaciones totales sin garantizar | Parcial: `DICTADO` → área por SP; el resto, limitación documentada. |
 | 11 | Restricciones de cuotas que sólo cubren los SP | Aplicado: puesta al día en `SP_LIQUIDAR_CUOTA_ARANCEL`; el resto, limitación documentada. |
 | 12 | Inconsistencias en TP_BBDD_Grupo_4.md (§3.2, §5.1.1, §5.1.15, §4.1) | **Abierto**; requiere OK del grupo. |
@@ -188,7 +189,7 @@ Todas en [pendientes_diseno.md](pendientes_diseno.md).
 ## 7. Próximos pasos sugeridos
 
 1. Llevar al grupo la consulta de [consulta_decisiones_abiertas.md](consulta_decisiones_abiertas.md) (TODO 3, 8 y 9, los supuestos del TODO 5 y el TODO 12).
-2. Con las respuestas, aplicar en los scripts el dominio de `estado_mantenimiento` (TODO 3) y lo que se decida de la consulta 2 (TODO 8).
+2. Con las respuestas, aplicar en los scripts el dominio de `estado_mantenimiento` (TODO 3) y, si cambia, el criterio de "año pasado" de la consulta 2 (TODO 8).
 3. Completar los entregables a–d (§4.4). Conviene empezar por d (restricciones adicionales) y b (supuestos), que se pueden redactar con lo ya implementado.
 4. Resolver con el grupo las inconsistencias de TP_BBDD_Grupo_4.md (TODO 12) antes de entregar.
 

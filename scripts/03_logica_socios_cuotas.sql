@@ -318,13 +318,14 @@ GO
 -- Consulta 2 del enunciado: cantidad de socios por categoría inscriptos en todas las
 -- actividades gratuitas durante el año pasado (YEAR(GETDATE()) - 1, según fecha_inscripcion).
 -- Cuenta también las inscripciones dadas de baja: el socio estuvo inscripto ese año (supuesto, TODO 5).
--- Supuesto: si no hay actividades gratuitas, nadie cumple (el INNER JOIN deja el conjunto vacío; TODO 8).
+-- Sólo muestra las categorías con al menos un socio que cumple: si nadie cumple, o no hay actividades
+-- gratuitas, la vista no devuelve filas (decisión del usuario, TODO 8).
 CREATE OR ALTER VIEW VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR
 AS
 SELECT c.nombre_categoria,
        COUNT(q.nro_socio_base) AS cantidad_socios
 FROM CATEGORIA c
-LEFT JOIN (
+INNER JOIN (
     SELECT s.nombre_categoria,
            s.nro_socio_base,
            s.nro_orden
