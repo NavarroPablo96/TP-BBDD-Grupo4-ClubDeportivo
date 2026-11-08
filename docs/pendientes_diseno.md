@@ -10,16 +10,16 @@ Registro de decisiones de diseño: qué está abierto, qué se decidió y qué q
 | 2 | Jerarquía de `ACTIVIDAD` | Aplicado (con limitación) |
 | 3 | Dominio de `AREA.estado_mantenimiento` | **Abierto** |
 | 4 | Tipos de `PROFESIONAL.dni` y `AREA.cod_area` | Aplicado |
-| 5 | Baja de inscripciones al cambiar de categoría (H12) | **Abierto** |
+| 5 | Baja de inscripciones al cambiar de categoría (H12) | Aplicado; supuestos a confirmar con el grupo |
 | 6 | Categorías y `nro_orden` | Aplicado |
 | 7 | Vencimiento de la cuota social | Cerrado |
 | 8 | Consulta 2: "todas las gratuitas" y "año pasado" | **Abierto** (supuesto aplicado) |
-| 9 | Consultas 1 y 2 como stored procedures | Decidido; falta confirmar el criterio de año (ver TODO 8) |
-| 10 | Participaciones totales sin garantizar | **Abierto** (no consultado aún) |
-| 11 | Restricciones de cuotas que sólo cubren los SP | **Abierto** (no consultado aún) |
+| 9 | Consultas 1 y 2 como vistas | Aplicado (vistas con `YEAR(GETDATE())`); falta confirmar el criterio de la consulta 2 (ver TODO 8) |
+| 10 | Participaciones totales sin garantizar | Parcial: `DICTADO` → área por SP; el resto, limitación documentada |
+| 11 | Restricciones de cuotas que sólo cubren los SP | Aplicado: puesta al día en `SP_LIQUIDAR_CUOTA_ARANCEL`; el resto, limitación documentada |
 | 12 | Inconsistencias en TP_BBDD_Grupo_4.md | **Abierto** (requiere OK del grupo) |
 
-Los TODO 10 a 12 surgieron de comparar `TP_BBDD_Grupo_4.md` (§4.1 y §4.2) con los scripts. Todavía no están en la consulta para el grupo.
+Los TODO 10 a 12 surgieron de comparar `TP_BBDD_Grupo_4.md` (§4.1 y §4.2) con los scripts. Los TODO 5, 10 y 11 se resolvieron con decisiones del usuario; los supuestos que el grupo todavía no confirmó están marcados en cada uno.
 
 ---
 
@@ -34,49 +34,59 @@ Los TODO 10 a 12 surgieron de comparar `TP_BBDD_Grupo_4.md` (§4.1 y §4.2) con 
 
 ## TODO 5: Baja de inscripciones al cambiar de categoría (H12)
 
-**Estado:** ABIERTO. El usuario lo va a consultar; se inclina por agregar estado a `INSCRIPCION`. No hay nada implementado en `03_logica_socios_cuotas.sql`.
+**Estado:** APLICADO por decisión del usuario, con supuestos que el grupo todavía no confirmó. Cambia el modelo de TP_BBDD_Grupo_4.md §4.1 (ver TODO 12).
 
-H12 dice que al cambiar la categoría de un socio se dan de baja sus inscripciones a actividades no habilitadas para la nueva categoría. `INSCRIPCION` no tiene campo de estado ni fecha de baja.
+H12 dice que al cambiar la categoría de un socio se dan de baja sus inscripciones a actividades no habilitadas para la nueva categoría.
 
-Propuesta sin confirmar:
-- Columnas `estado` (`'Activa'` / `'Baja'`) y `fecha_baja` en `INSCRIPCION`, más un trigger `AFTER UPDATE` sobre `SOCIO`. Cambia el modelo de TP_BBDD_Grupo_4.md §4.1.
-- `SP_LIQUIDAR_CUOTA_ARANCEL` deja de generar cuotas para las inscripciones dadas de baja; las ya generadas se mantienen.
+Implementado:
+- `INSCRIPCION` tiene `estado` (`'Activa'` / `'Baja'`, default `'Activa'`) y `fecha_baja`, con `CK_INSCRIPCION_ESTADO` y `CK_INSCRIPCION_FECHA_BAJA`.
+- La PK de `INSCRIPCION` pasó a `(nro_socio_base, nro_orden, cod_actividad, fecha_inscripcion)`, para que un socio dado de baja pueda reinscribirse en la misma actividad (H6). La FK y la PK de `CUOTA_ARANCEL` incluyen ahora `fecha_inscripcion`.
+- `TR_INSCRIPCION_VIGENTE_UNICA` (50014): a lo sumo una inscripción `Activa` por socio y actividad (H6). Es un trigger y no un índice único filtrado porque `sqlcmd` corre con `QUOTED_IDENTIFIER OFF`.
+- `TR_SOCIO_CAMBIO_CATEGORIA` (sobre `SOCIO`): al cambiar `nombre_categoria` pasa a `Baja` las inscripciones activas no habilitadas para la nueva categoría y conserva las compatibles. `fecha_baja` es la fecha actual (o la de inscripción si es posterior).
+- `TR_INSCRIPCION_CATEGORIA_HABILITADA` valida sólo las inscripciones `Activa`, para que la baja no se rechace a sí misma.
+- `SP_LIQUIDAR_CUOTA_ARANCEL` deja de generar cuotas para las inscripciones dadas de baja (sólo las vencidas hasta la `fecha_baja`); las ya generadas se mantienen.
+- Pruebas O, P1 y P2 en `05`.
+
+Supuestos a confirmar con el grupo:
+- Una inscripción dada de baja deja de generar cuotas de arancel.
 - Las inscripciones dadas de baja siguen contando en la consulta 2.
-- H6 habla de "una inscripción **vigente** por actividad", pero la PK de `INSCRIPCION` es `(nro_socio_base, nro_orden, cod_actividad)`. Con estado, un socio dado de baja no podría volver a inscribirse en la misma actividad. Hay que decidir si eso es aceptable o si la PK cambia (por ejemplo, sumando `fecha_inscripcion`), lo que también afecta la FK de `CUOTA_ARANCEL`.
+- Reinscribirse crea una fila nueva (otra `fecha_inscripcion`); no se reactiva la fila de baja. Como la fecha es parte de la PK, no se puede reinscribir el mismo día de una inscripción anterior en esa actividad (error 2627).
 
-- [ ] Decidir si la baja borra filas de `INSCRIPCION` o si se agrega estado / fecha de baja (cambio de modelo).
-- [ ] Decidir el efecto sobre la PK y la reinscripción (H6).
-- [ ] Implementar el trigger `AFTER UPDATE` sobre `SOCIO` según la decisión y ajustar `SP_LIQUIDAR_CUOTA_ARANCEL`, `SP_INSCRIBIR_ACTIVIDAD` y `SP_CONSULTA_SOCIOS_GRATUITAS`.
-- [ ] Agregar pruebas (cambio de categoría con inscripciones compatibles e incompatibles).
+- [x] Decidir agregar estado / fecha de baja a `INSCRIPCION` (cambio de modelo).
+- [x] Decidir el efecto sobre la PK y la reinscripción (H6): la PK suma `fecha_inscripcion`.
+- [x] Implementar el trigger sobre `SOCIO` y ajustar `SP_INSCRIBIR_ACTIVIDAD`, `SP_LIQUIDAR_CUOTA_ARANCEL` y la consulta 2.
+- [x] Agregar pruebas (cambio de categoría con inscripciones compatibles e incompatibles, reinscripción, doble inscripción activa).
+- [ ] Confirmar los supuestos con el grupo y reflejar el cambio en §4.1 de la resolución (TODO 12).
 
 ## TODO 8: Criterio de "todas las gratuitas" sin actividades gratuitas
 
-**Estado:** ABIERTO. El usuario lo va a consultar. Supuesto aplicado: `SP_CONSULTA_SOCIOS_GRATUITAS` no cuenta a nadie si no hay actividades gratuitas ("todas" no se cumple en vacío).
+**Estado:** ABIERTO. El usuario lo va a consultar. Supuesto aplicado: `VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR` no cuenta a nadie si no hay actividades gratuitas ("todas" no se cumple en vacío).
 
 - [ ] Confirmar el criterio con el equipo.
 - [ ] Confirmar si "año pasado" refiere al año de `fecha_inscripcion`.
 
-## TODO 9: Consultas 1 y 2 del enunciado como stored procedures
+## TODO 9: Consultas 1 y 2 del enunciado como vistas
 
-**Estado:** decidido por el usuario: stored procedures con parámetro `@anio`, implementados en `03_logica_socios_cuotas.sql`. Antes eran vistas con `GETDATE()`.
+**Estado:** APLICADO por decisión del usuario: vistas en `03_logica_socios_cuotas.sql` que usan `YEAR(GETDATE())`. Antes fueron vistas, después SP con parámetro `@anio`, y ahora vuelven a ser vistas para seguir el enunciado al pie de la letra ("año en curso" y "año pasado"). Se eliminan los SP anteriores con `DROP PROCEDURE IF EXISTS`.
 
-- `SP_CONSULTA_TITULARES_DEUDA (@anio)`: titulares con deuda `monto_a_pagar - ISNULL(monto_abonado, 0) > 0` en las cuotas sociales del año, con importe total e integrantes del grupo.
-- `SP_CONSULTA_SOCIOS_GRATUITAS (@anio)`: por categoría, socios con inscripciones de ese año (`fecha_inscripcion`) que cubren todas las filas de `ACTIVIDAD_GRATUITA`. El llamador pasa el año anterior para cumplir el enunciado. Exige al menos una actividad gratuita (TODO 8).
+- `VW_TITULARES_DEUDA_ANIO_ACTUAL`: titulares con deuda `monto_a_pagar - ISNULL(monto_abonado, 0) > 0` en las cuotas sociales de `YEAR(GETDATE())`, con importe total e integrantes del grupo.
+- `VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR`: por categoría, socios con inscripciones de `YEAR(GETDATE()) - 1` (`fecha_inscripcion`) que cubren todas las filas de `ACTIVIDAD_GRATUITA`. Exige al menos una actividad gratuita (TODO 8) y cuenta también las inscripciones dadas de baja (TODO 5).
+- Para que los resultados esperados no dependan del año en que se corra, los períodos de `VALOR_CUOTA_SOCIAL` de `02` y las fechas de `05` son relativos al año actual.
 
-- [x] Decidir: stored procedure para cada consulta.
-- [x] Definir el parámetro de año y actualizar `03` y `05`.
-- [ ] Confirmar con el equipo que el criterio de "año pasado" queda en el parámetro (junto con el TODO 8).
+- [x] Decidir: vista para cada consulta, con `YEAR(GETDATE())` y `YEAR(GETDATE()) - 1`.
+- [x] Reemplazar los SP por las vistas y actualizar `02` y `05`.
+- [ ] Confirmar con el equipo el criterio de la consulta 2 (junto con el TODO 8).
 
 ## TODO 10: Participaciones totales sin garantizar
 
-**Estado:** ABIERTO. No consultado todavía. TP_BBDD_Grupo_4.md §4.1 exige participación total ("debe estar") en estos casos y los scripts no la garantizan:
+**Estado:** PARCIAL por decisión del usuario. Se resolvió con SP la participación de `DICTADO` en `SE_DESARROLLA_EN`; las demás quedan como limitación documentada. TP_BBDD_Grupo_4.md §4.1 exige participación total ("debe estar") en estos casos:
 
 | Restricción de §4.1 | Cómo está hoy |
 |---|---|
-| l.157: toda `ACTIVIDAD` debe estar en `HABILITADA_PARA` | No se garantiza. `SP_ALTA_ACTIVIDAD_*` no cargan habilitaciones. |
-| l.163: todo `PROFESIONAL` debe estar en `PUEDE_DESEMPENIARSE_EN` | No se garantiza. |
-| l.169: toda `AREA` debe estar en `APTA_PARA` | No se garantiza. |
-| l.188: todo `DICTADO` debe estar en `SE_DESARROLLA_EN` | No se garantiza. `SP_ALTA_DICTADO` crea el día y el profesional, pero no el área. |
+| l.157: toda `ACTIVIDAD` debe estar en `HABILITADA_PARA` | Limitación: no se garantiza. `SP_ALTA_ACTIVIDAD_*` no cargan habilitaciones. |
+| l.163: todo `PROFESIONAL` debe estar en `PUEDE_DESEMPENIARSE_EN` | Limitación: no se garantiza. |
+| l.169: toda `AREA` debe estar en `APTA_PARA` | Limitación: no se garantiza. |
+| l.188: todo `DICTADO` debe estar en `SE_DESARROLLA_EN` | Resuelto por SP: `SP_ALTA_DICTADO` recibe `@cod_area` y carga el área en la misma transacción. Un `INSERT` directo lo saltea. |
 | l.136: todo `GRUPO_FAMILIAR` debe estar en `SOCIO` | `SP_ALTA_GRUPO_FAMILIAR` y `TR_SOCIO_BAJA_GRUPO`. Un `INSERT` directo los saltea. |
 | l.177 y l.182: todo `DICTADO` debe tener día y profesional | `SP_ALTA_DICTADO`. Un `INSERT` directo lo saltea. |
 | l.151: jerarquía total de `ACTIVIDAD` | `SP_ALTA_ACTIVIDAD_*` (ver TODO 2). Un `INSERT` directo, o borrar una subentidad, la saltea. |
@@ -87,21 +97,22 @@ Opciones para las cuatro primeras filas:
 - **A:** ampliar los SP de alta. Por ejemplo `SP_ALTA_DICTADO` con `@cod_area`, y SP de alta de `PROFESIONAL` y `AREA` con su actividad. Lo difícil es `ACTIVIDAD` ↔ `HABILITADA_PARA`, que necesita una lista de categorías (varias filas) como parámetro.
 - **B:** documentarlas como limitación, igual que `GRUPO_FAMILIAR`.
 
-- [ ] Decidir A o B para cada restricción.
-- [ ] Registrar las que queden como limitación en la sección de restricciones adicionales de la resolución (entregable d).
+- [x] Decidir: sólo `DICTADO` → área por SP; el resto, limitación.
+- [x] `SP_ALTA_DICTADO` con `@cod_area` y prueba R en `05`.
+- [ ] Registrar las limitaciones (ACTIVIDAD, PROFESIONAL y AREA, y los `INSERT` directos) en la sección de restricciones adicionales de la resolución (entregable d).
 
 ## TODO 11: Restricciones de cuotas que sólo cubren los SP
 
-**Estado:** ABIERTO. No consultado todavía.
+**Estado:** APLICADO por decisión del usuario: "puesta al día" en `SP_LIQUIDAR_CUOTA_ARANCEL`, sin trigger nuevo. El resto queda como limitación documentada.
 
-- **§4.2 l.219:** las cuotas de una inscripción se numeran en forma correlativa desde 1 y la cuota k vence a los k × `meses_por_cuota` meses de la fecha de inscripción. Hoy sólo lo cumplen `SP_INSCRIBIR_ACTIVIDAD` y `SP_LIQUIDAR_CUOTA_ARANCEL`; el DDL sólo tiene `CHECK (nro_cuota > 0)`. Un `INSERT` directo puede saltear la correlatividad o el vencimiento.
-- **Riesgo operativo:** `SP_LIQUIDAR_CUOTA_ARANCEL` calcula `nro_cuota` a partir de los meses transcurridos (`meses_transcurridos / meses_por_cuota + 1`). Si no se corre en el mes en que vence una cuota, esa cuota no se genera y las siguientes quedan con un hueco en la numeración, lo que contradice la correlatividad.
-- **§4.2 l.217:** la cuota social es la suma por integrante del monto base vigente afectado por el porcentaje de la categoría. Sólo la calcula `SP_LIQUIDAR_CUOTA_SOCIAL`; un `INSERT` o `UPDATE` directo en `CUOTA_SOCIAL` no se controla.
+- **Correlatividad de las cuotas de arancel:** `SP_LIQUIDAR_CUOTA_ARANCEL` genera ahora todas las cuotas vencidas hasta el mes indicado que falten (no sólo la del mes), así que saltear una corrida mensual ya no deja huecos en `nro_cuota`. Sigue siendo idempotente. Prueba Q en `05`.
+- **Regla de vencimiento:** se mantiene la de H9 (la cuota n vence `(n - 1) × meses_por_cuota` meses después de la inscripción; la primera vence en la fecha de inscripción). §4.2 l.219 dice "la cuota k vence a los k × `meses_por_cuota` meses", que contradice H9: se registra en el TODO 12 para que el grupo corrija el texto.
+- **Limitación:** un `INSERT` o `UPDATE` directo en `CUOTA_ARANCEL` puede saltear la correlatividad y el vencimiento (el DDL sólo tiene `CHECK (nro_cuota > 0)`).
+- **Cuota social (§4.2 l.217):** el monto lo calcula sólo `SP_LIQUIDAR_CUOTA_SOCIAL` y se fija al generar (H8). Un trigger no podría recalcularlo sin romper H8; queda documentado como limitación.
 
-Opciones: trigger en `CUOTA_ARANCEL` que valide `nro_cuota` y `fecha_vencimiento` contra la inscripción; hacer que el SP genere también las cuotas faltantes de meses anteriores; o documentar como limitación. Para la cuota social, el monto es un dato derivado y fijado al generar (H8), así que un trigger no puede recalcularlo sin romper H8: lo razonable es documentarlo.
-
-- [ ] Decidir trigger, SP que complete cuotas faltantes, o limitación documentada.
-- [ ] Agregar pruebas de rechazo si se implementa.
+- [x] Decidir: puesta al día en el SP, sin trigger.
+- [x] Implementar la puesta al día y la prueba Q.
+- [ ] Registrar las limitaciones en la sección de restricciones adicionales de la resolución (entregable d).
 
 ## TODO 12: Inconsistencias en la resolución entregada (TP_BBDD_Grupo_4.md)
 
@@ -110,7 +121,11 @@ Opciones: trigger en `CUOTA_ARANCEL` que valide `nro_cuota` y `fecha_vencimiento
 - **§3.2 (restricciones adicionales) está vacío.** Es el entregable d. Hay que completarlo con las de §4.2 y los triggers y SP implementados.
 - **§5.1.1 `CUOTA_SOCIAL` lista el atributo `deuda`**, pero §4.1, §4.2 l.216 y el DDL dicen que la deuda no se almacena.
 - **§5.1.15 `DICTADO` está desactualizada**: el modelo ahora tiene `DICTADO_DIA` como tabla separada.
-- **§4.1 no refleja los cambios posteriores**: tablas nuevas, orden de implementación y los CHECK agregados (`CK_CATEGORIA_NOMBRE`, `CK_SOCIO_NRO_ORDEN`, `CK_AREA_COD_AREA`, entre otros). Es el entregable a.
+- **§4.1 no refleja los cambios posteriores**: tablas nuevas, orden de implementación y los CHECK agregados (`CK_CATEGORIA_NOMBRE`, `CK_SOCIO_NRO_ORDEN`, `CK_AREA_COD_AREA`, entre otros). Es el entregable a. En particular, por el TODO 5:
+  - `INSCRIPCION` suma `estado` y `fecha_baja`, y su PK incluye `fecha_inscripcion`.
+  - `CUOTA_ARANCEL` suma `fecha_inscripcion` a su PK y a la FK hacia `INSCRIPCION`.
+- **H9 contradice §4.2 l.219**: H9 dice que la primera cuota vence en la fecha de inscripción; §4.2 dice que la cuota k vence a los k × `meses_por_cuota` meses. Los scripts siguen H9.
+- **Las consultas 1 y 2 son vistas** (`VW_TITULARES_DEUDA_ANIO_ACTUAL` y `VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR`); la resolución no las define como SP ni como vistas.
 
 - [ ] Confirmar con el grupo qué se corrige en la resolución y qué se documenta aparte.
 

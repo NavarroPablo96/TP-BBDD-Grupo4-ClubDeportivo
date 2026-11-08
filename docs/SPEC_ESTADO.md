@@ -56,12 +56,17 @@ Constraints de dominio resueltos con DDL:
 - `CK_ACTIVIDAD_ARANCELADA_MESES_POR_CUOTA`: `meses_por_cuota IN (1, 2, 3, 6, 12)` (TODO 1, cerrado).
 - `CK_PROFESIONAL_DNI`: `dni > 0`. `CK_AREA_COD_AREA`: no vacío y sin espacios al borde. `CK_AREA_CAPACIDAD`: `capacidad >= 0` (TODO 4).
 - `CK_CUOTA_ARANCEL_NRO_CUOTA` (`nro_cuota > 0`) y `CK_CUOTA_ARANCEL_IMPORTES`.
+- `CK_INSCRIPCION_ESTADO` (`'Activa'` / `'Baja'`) y `CK_INSCRIPCION_FECHA_BAJA` (activa sin fecha de baja; baja con fecha no anterior a la inscripción) (TODO 5).
+
+Claves: la PK de `INSCRIPCION` es `(nro_socio_base, nro_orden, cod_actividad, fecha_inscripcion)` y `CUOTA_ARANCEL` la incluye en su PK y en su FK hacia `INSCRIPCION` (TODO 5).
 
 ### 3.2 Lógica en `03_logica_socios_cuotas.sql`
 
 Triggers:
 
-- `TR_INSCRIPCION_CATEGORIA_HABILITADA` (sobre `INSCRIPCION`): un socio sólo se inscribe en actividades habilitadas para su categoría (§4.2). Error 50001.
+- `TR_INSCRIPCION_CATEGORIA_HABILITADA` (sobre `INSCRIPCION`): un socio sólo se inscribe en actividades habilitadas para su categoría (§4.2). Valida sólo las inscripciones `Activa`. Error 50001.
+- `TR_INSCRIPCION_VIGENTE_UNICA` (sobre `INSCRIPCION`): a lo sumo una inscripción `Activa` por socio y actividad (H6). Error 50014.
+- `TR_SOCIO_CAMBIO_CATEGORIA` (sobre `SOCIO`, al actualizar la categoría): da de baja las inscripciones activas no habilitadas para la nueva categoría y conserva las compatibles (H12, TODO 5).
 - `TR_VALOR_CUOTA_SOCIAL_VIGENCIA` (sobre `VALOR_CUOTA_SOCIAL`): los períodos no se superponen ni dejan huecos (§4.2). Error 50002.
 - `TR_SOCIO_TITULAR_CATEGORIA` (sobre `SOCIO`): el titular (`nro_orden = 0`) no puede ser `infantiles` (§4.2). Usa `'infantiles'` literal. Error 50003.
 - `TR_SOCIO_BAJA_GRUPO` (sobre `SOCIO`, al borrar): el titular no se da de baja mientras el grupo tenga integrantes (50009), y un grupo no queda sin integrantes (50010). No aplica al borrar el grupo completo por cascada.
@@ -73,14 +78,16 @@ Stored procedures:
 
 - `SP_ALTA_GRUPO_FAMILIAR`: crea grupo y titular en una transacción. Garantiza que todo grupo tenga titular (H1).
 - `SP_ALTA_ACTIVIDAD_ARANCELADA` y `SP_ALTA_ACTIVIDAD_GRATUITA`: crean la actividad y su subentidad en una transacción (totalidad de la jerarquía, TODO 2).
-- `SP_ALTA_DICTADO`: crea dictado, un día y un profesional a cargo en una transacción (H13). No carga el área (ver TODO 10).
+- `SP_ALTA_DICTADO (…, @dni, @cod_area, @cod_dictado OUTPUT)`: crea dictado, un día, un profesional a cargo y un área en una transacción (H13, §4.1; TODO 10).
 - `SP_INSCRIBIR_ACTIVIDAD (@nro_socio_base, @nro_orden, @cod_actividad, @fecha_inscripcion)`: inscribe. Si la actividad es arancelada, genera la cuota 1 por adelantado (H9). Transacción.
-- `SP_LIQUIDAR_CUOTA_ARANCEL (@anio, @mes)`: genera, para el mes, la cuota de arancel que vence en cada inscripción arancelada. La cuota k vence k × `meses_por_cuota` meses después de la inscripción. No duplica (H8, H9). Supuesto: se corre cada mes (ver TODO 11).
+- `SP_LIQUIDAR_CUOTA_ARANCEL (@anio, @mes)`: "puesta al día": genera todas las cuotas de arancel vencidas hasta el mes indicado que falten, de las inscripciones activas (y de las dadas de baja sólo hasta su fecha de baja). La cuota n vence (n - 1) × `meses_por_cuota` meses después de la inscripción (H9). No duplica (H8) y la numeración queda correlativa aunque se saltee un mes (TODO 11).
 - `SP_LIQUIDAR_CUOTA_SOCIAL (@anio, @mes)`: genera la cuota social de un mes para cada grupo que no la tenga (H8, H10). Monto = suma de `monto_base` vigente × `(1 + porcentaje_mod_cuota / 100)` por integrante. Se fija al generar. Vencimiento: último día del mes (TODO 7, cerrado).
-- `SP_CONSULTA_TITULARES_DEUDA (@anio)`: consulta 1 del enunciado. Titulares con deuda del año, importe total e integrantes.
-- `SP_CONSULTA_SOCIOS_GRATUITAS (@anio)`: consulta 2 del enunciado. Socios por categoría inscriptos en todas las gratuitas del año indicado. Se llama con el año anterior.
 
-Las consultas son SP con año como parámetro por decisión del usuario (TODO 9), no vistas.
+Vistas de las consultas del enunciado (decisión del usuario, TODO 9; se eliminan los SP anteriores con `DROP PROCEDURE IF EXISTS`):
+
+- `VW_TITULARES_DEUDA_ANIO_ACTUAL`: consulta 1. Titulares con deuda en las cuotas sociales de `YEAR(GETDATE())`, importe total e integrantes.
+- `VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR`: consulta 2. Socios por categoría inscriptos en todas las gratuitas durante `YEAR(GETDATE()) - 1`. Cuenta también las inscripciones dadas de baja y no cuenta a nadie si no hay actividades gratuitas (TODO 8).
+- `VW_CONFLICTOS_DICTADO`: pares de dictados en conflicto, para los triggers de solapamiento.
 
 ### 3.3 Lógica en `04_logica_areas_profesionales.sql`
 
@@ -89,26 +96,30 @@ Aporte de un compañero, adaptado a los códigos de error y al estilo de `03`:
 - `TR_A_CARGO_DE_PROF_HABILITADO` (sobre `A_CARGO_DE`): el profesional debe estar en `PUEDE_DESEMPENIARSE_EN` para la actividad del dictado (§4.2). Error 50005.
 - `TR_SE_DESARROLLA_EN_AREA_APTA` (sobre `SE_DESARROLLA_EN`): el área debe estar en `APTA_PARA` para la actividad del dictado (§4.2). Error 50006.
 
-Los códigos de error son únicos en todo `03` y `04` (50001 a 50013, con 50004 usado por `SP_LIQUIDAR_CUOTA_SOCIAL`).
+Los códigos de error son únicos en todo `03` y `04` (50001 a 50014, con 50004 usado por `SP_LIQUIDAR_CUOTA_SOCIAL`).
 
 ### 3.4 Datos de prueba
 
-- `02_insercion_datos.sql`: 3 categorías (`infantiles` -30, `mayores` 0, `vitalicios` -15), 5 grupos (8 socios, titulares con `nro_orden = 0`), 4 valores de cuota social (2025 y 2026). Sin `CUOTA_SOCIAL`, sin actividades, sin inscripciones.
-- `05_datos_logica_socios_cuotas.sql`: 3 grupos nuevos (Marta Ruiz, Pablo Diaz, Elena Sosa), 2 actividades gratuitas (201, 202) y 1 arancelada (301) creadas con los SP de alta, habilitaciones, cuotas de enero a marzo 2026 con pagos completos, parciales y sin pagar, inscripciones de 2025 y 2026, un profesional, un área y un dictado de ejemplo.
+- `02_insercion_datos.sql`: 3 categorías (`infantiles` -30, `mayores` 0, `vitalicios` -15), 5 grupos (8 socios, titulares con `nro_orden = 0`), 4 valores de cuota social relativos al año actual (año anterior: 10000 y 12000; año actual: 15000 y 18000 desde julio). Sin `CUOTA_SOCIAL`, sin actividades, sin inscripciones.
+- `05_datos_logica_socios_cuotas.sql`: 3 grupos nuevos (Marta Ruiz, Pablo Diaz, Elena Sosa), 2 actividades gratuitas (201, 202) y 1 arancelada (301) creadas con los SP de alta, habilitaciones, cuotas de enero a marzo del año actual con pagos completos, parciales y sin pagar, inscripciones del año anterior y del actual, un profesional, un área y un dictado de ejemplo. Las fechas son relativas al año actual para que las vistas den los mismos resultados cualquiera sea el año.
 
 Resultados esperados con estos datos:
 
-- `SP_CONSULTA_TITULARES_DEUDA 2026`: Juan Perez 121500.00 (3), Carlos Gomez 90000.00 (2), Sofia Rodriguez 45000.00 (1), Roberto Fernandez 38250.00 (1), Laura Martinez 45000.00 (1), Pablo Diaz 30000.00 (1), Elena Sosa 78250.00 (2).
-- `SP_CONSULTA_SOCIOS_GRATUITAS 2025`: mayores 2, el resto 0.
+- `VW_TITULARES_DEUDA_ANIO_ACTUAL`: Juan Perez 121500.00 (3), Carlos Gomez 90000.00 (2), Sofia Rodriguez 45000.00 (1), Roberto Fernandez 38250.00 (1), Laura Martinez 45000.00 (1), Pablo Diaz 30000.00 (1), Elena Sosa 78250.00 (2).
+- `VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR`: mayores 2, el resto 0.
 - Deuda de arancel de Marta (actividad 301): 8000.00.
 
 ### 3.5 Verificación hecha
 
 - Reconstrucción limpia con `00` a `05` (exit 0). `03` y `04` se pueden volver a correr (exit 0).
-- Pruebas en `05`, cada una en transacción con `ROLLBACK`:
+- Pruebas en `05`, cada una en transacción con `ROLLBACK` (salvo R, que limpia sus datos):
   - A–G: rechazos 50005, 50006, 50007 (y el control D, que pasa), 50008, 50009 y 50010.
   - H–K: rechazos 50011, 50012 y 50013, y el alta por SP de actividades (K, pasa).
   - L–N: error 547 de `CK_PROFESIONAL_DNI`, `CK_AREA_COD_AREA` (blanco y espacio inicial), `CK_CATEGORIA_NOMBRE` y `CK_SOCIO_NRO_ORDEN`.
+  - O: el cambio de categoría da de baja la inscripción incompatible, conserva la compatible y la cuota ya generada (H12).
+  - P1 y P2: reinscripción tras una baja (pasa) y segunda inscripción activa en la misma actividad (50014).
+  - Q: puesta al día, cuotas 1 a 4 correlativas al liquidar abril sin haber liquidado antes, sin duplicar al repetir.
+  - R: `SP_ALTA_DICTADO` con un área no apta rechaza 50006 y no deja filas.
 - Liquidar dos veces el mismo mes no duplica cuotas. Los montos calculados coinciden con los esperados.
 - El alta de un titular infantil no deja filas en `GRUPO_FAMILIAR` (rollback del SP).
 - Re-correr `02` sobre una base cargada falla por diseño (`FK_SOCIO_GRUPO_FAMILIAR`): la `IDENTITY` de `GRUPO_FAMILIAR` no se reinicia. Re-correr `05` sobre datos cargados falla por claves duplicadas.
@@ -119,17 +130,17 @@ Resultados esperados con estos datos:
 
 Detalle en [pendientes_diseno.md](pendientes_diseno.md). No implementar ni asumir sin el equipo.
 
-- TODO 3: dominio de `AREA.estado_mantenimiento` (y confirmar que es monovaluado).
-- TODO 5: baja de inscripciones al cambiar de categoría (H12), con efecto sobre la PK de `INSCRIPCION` (H6).
+- TODO 3: dominio de `AREA.estado_mantenimiento` (y confirmar que es monovaluado). Hoy es texto libre; los datos de `05` usan `'Bueno'`, que quedaría inválido con un CHECK.
 - TODO 8 y 9: consulta 2, "todas las gratuitas" sin actividades y criterio de "año pasado".
+- Supuestos del TODO 5 a confirmar: la baja corta las cuotas de arancel, las bajas cuentan en la consulta 2 y reinscribirse crea una fila nueva.
+- TODO 12: correcciones a la resolución entregada (§3.2, §4.1, §5.1.1, §5.1.15 y H9 vs §4.2 l.219).
 
 ### 4.2 Restricciones del modelo sin garantizar
 
-Surgen de comparar TP_BBDD_Grupo_4.md §4.1 y §4.2 con los scripts. Detalle y opciones en los TODO 10 y 11 de [pendientes_diseno.md](pendientes_diseno.md). Ninguna se consultó todavía.
+Surgen de comparar TP_BBDD_Grupo_4.md §4.1 y §4.2 con los scripts. Quedan como limitación documentada por decisión del usuario (TODO 10 y 11 en [pendientes_diseno.md](pendientes_diseno.md)); hay que registrarlas en las restricciones adicionales (entregable d).
 
-- Participaciones totales (TODO 10): `ACTIVIDAD` en `HABILITADA_PARA`, `PROFESIONAL` en `PUEDE_DESEMPENIARSE_EN`, `AREA` en `APTA_PARA` y `DICTADO` en `SE_DESARROLLA_EN` no se garantizan. `GRUPO_FAMILIAR`, `DICTADO` (día y profesional) y la jerarquía de `ACTIVIDAD` sólo se garantizan por los SP de alta; un `INSERT` directo los saltea.
-- Cuotas (TODO 11): la correlatividad y el vencimiento de `CUOTA_ARANCEL` (§4.2) y el monto de `CUOTA_SOCIAL` sólo los cumplen los SP. Si `SP_LIQUIDAR_CUOTA_ARANCEL` no se corre en un mes, queda un hueco en la numeración.
-- Baja de inscripciones al cambiar de categoría (H12): sin implementar hasta cerrar el TODO 5.
+- Participaciones totales (TODO 10): `ACTIVIDAD` en `HABILITADA_PARA`, `PROFESIONAL` en `PUEDE_DESEMPENIARSE_EN` y `AREA` en `APTA_PARA` no se garantizan. `GRUPO_FAMILIAR`, `DICTADO` (día, profesional y área) y la jerarquía de `ACTIVIDAD` sólo se garantizan por los SP de alta; un `INSERT` directo los saltea.
+- Cuotas (TODO 11): la correlatividad y el vencimiento de `CUOTA_ARANCEL` y el monto de `CUOTA_SOCIAL` sólo los cumplen los SP; un `INSERT` o `UPDATE` directo los saltea.
 
 ### 4.3 Aplicación host
 
@@ -153,13 +164,13 @@ Todas en [pendientes_diseno.md](pendientes_diseno.md).
 | 2 | Jerarquía de `ACTIVIDAD` | Aplicado (triggers y SP de alta). Totalidad sólo vía SP. |
 | 3 | Dominio de `AREA.estado_mantenimiento` | **Abierto**; el usuario lo consulta. |
 | 4 | Tipos de `PROFESIONAL.dni` y `AREA.cod_area` | Aplicado: `dni` `INT` con `dni > 0`; `cod_area` `VARCHAR(20)` con CHECK de formato. |
-| 5 | Baja de inscripciones al cambiar categoría (H12) | **Abierto**; el usuario lo consulta (se inclina por agregar estado a `INSCRIPCION`). |
+| 5 | Baja de inscripciones al cambiar categoría (H12) | Aplicado: `estado` y `fecha_baja` en `INSCRIPCION`, PK con `fecha_inscripcion`. Supuestos a confirmar. |
 | 6 | Categorías y `nro_orden` | Aplicado: `infantiles/mayores/vitalicios` y titular en 0. |
 | 7 | Vencimiento de la cuota social | Cerrado: último día del mes. |
 | 8 | "Todas las gratuitas" sin actividades y "año pasado" | **Abierto**; el usuario lo consulta. Supuesto aplicado. |
-| 9 | Consultas 1 y 2 como SP | SP con parámetro de año. Falta confirmar el criterio de año (ver TODO 8). |
-| 10 | Participaciones totales sin garantizar | **Abierto**; no consultado. |
-| 11 | Restricciones de cuotas que sólo cubren los SP | **Abierto**; no consultado. |
+| 9 | Consultas 1 y 2 como vistas | Aplicado: vistas con `YEAR(GETDATE())`. Falta confirmar el criterio de la consulta 2 (ver TODO 8). |
+| 10 | Participaciones totales sin garantizar | Parcial: `DICTADO` → área por SP; el resto, limitación documentada. |
+| 11 | Restricciones de cuotas que sólo cubren los SP | Aplicado: puesta al día en `SP_LIQUIDAR_CUOTA_ARANCEL`; el resto, limitación documentada. |
 | 12 | Inconsistencias en TP_BBDD_Grupo_4.md (§3.2, §5.1.1, §5.1.15, §4.1) | **Abierto**; requiere OK del grupo. |
 
 ## 6. Problemas conocidos
@@ -170,11 +181,14 @@ Todas en [pendientes_diseno.md](pendientes_diseno.md).
 - Un `INSERT` directo en `ACTIVIDAD` o borrar una subentidad puede dejar una actividad sin clasificar (la totalidad la cubren los `SP_ALTA_ACTIVIDAD_*`).
 - Los SP de alta (`SP_ALTA_GRUPO_FAMILIAR`, `SP_ALTA_DICTADO`, `SP_ALTA_ACTIVIDAD_*`) son la única vía que garantiza la participación total; un `INSERT` directo la saltea.
 - Los SP de alta hacen `ROLLBACK` incondicional si hay una transacción abierta; si se los llama dentro de una transacción externa, la revierten completa.
+- `SP_ALTA_DICTADO` ahora exige `@cod_area`: cualquier llamado anterior sin ese parámetro falla.
+- Una reinscripción tras una baja crea una fila nueva y exige otra `fecha_inscripcion` (la PK la incluye); dos inscripciones en la misma fecha chocan por la PK.
+- Las vistas de las consultas dependen de `GETDATE()`: sin datos del año actual o del anterior devuelven vacío o ceros.
 
 ## 7. Próximos pasos sugeridos
 
-1. Llevar al grupo la consulta de [consulta_decisiones_abiertas.md](consulta_decisiones_abiertas.md) (TODO 3, 5, 8 y 9) y agregarle los TODO 10 y 11.
-2. Con las respuestas, aplicar en los scripts: dominio de `estado_mantenimiento`, baja de inscripciones (H12) y lo que se decida de los TODO 10 y 11.
+1. Llevar al grupo la consulta de [consulta_decisiones_abiertas.md](consulta_decisiones_abiertas.md) (TODO 3, 8 y 9, los supuestos del TODO 5 y el TODO 12).
+2. Con las respuestas, aplicar en los scripts el dominio de `estado_mantenimiento` (TODO 3) y lo que se decida de la consulta 2 (TODO 8).
 3. Completar los entregables a–d (§4.4). Conviene empezar por d (restricciones adicionales) y b (supuestos), que se pueden redactar con lo ya implementado.
 4. Resolver con el grupo las inconsistencias de TP_BBDD_Grupo_4.md (TODO 12) antes de entregar.
 

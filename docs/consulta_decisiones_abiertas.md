@@ -18,18 +18,25 @@ Hoy es un `VARCHAR(30)` de texto libre. El enunciado no dice qué valores puede 
 
 H12 dice que cuando un socio cambia de categoría, se dan de baja sus inscripciones a actividades no habilitadas para la nueva. Hoy `INSCRIPCION` no tiene forma de marcar una baja.
 
-* Propuesta: agregar `estado` (`Activa` o `Baja`) y `fecha_baja` a `INSCRIPCION`, más un trigger sobre `SOCIO` que haga la baja. Cambia el modelo relacional de §4.1.
-* Alternativa: borrar las filas de `INSCRIPCION`, sin cambiar el modelo. Se pierde el historial. También se perdería el dato de "inscripto el año pasado" que usa la consulta 2.
-* Preguntas derivadas si se agrega el estado:
-   * ¿Una inscripción dada de baja deja de generar cuotas de arancel? Proponemos que sí, y que las cuotas ya generadas se mantengan.
-   * ¿Una inscripción dada de baja cuenta en la consulta 2? Proponemos que sí, porque el socio estuvo inscripto ese año.
+* Ya implementado (a confirmar por el grupo): se agregó `estado` (`Activa` o `Baja`) y `fecha_baja` a `INSCRIPCION`, más un trigger sobre `SOCIO` que da la baja. Para poder reinscribirse después de una baja (H6 pide una inscripción *vigente* por actividad), la PK de `INSCRIPCION` ahora incluye `fecha_inscripcion`, y la FK de `CUOTA_ARANCEL` también. Cambia el modelo relacional de §4.1.
+* Alternativa descartada por ahora: borrar las filas de `INSCRIPCION`, sin cambiar el modelo. Se pierde el historial y el dato de "inscripto el año pasado" que usa la consulta 2.
+* Preguntas que quedan:
+   * ¿Una inscripción dada de baja deja de generar cuotas de arancel? Lo implementamos así, y las cuotas ya generadas se mantienen.
+   * ¿Una inscripción dada de baja cuenta en la consulta 2? Lo implementamos así, porque el socio estuvo inscripto ese año.
+   * ¿Una reinscripción crea una fila nueva (con otra fecha de inscripción)? Un socio no puede reinscribirse el mismo día de su inscripción anterior.
 
 ## 3. Consulta 2: "socios inscriptos en todas las actividades gratuitas el año pasado"
 
 * Si no existe ninguna actividad gratuita, "todas" se cumple en vacío y entrarían todos los socios. Proponemos que no cuente a nadie.
-* "Año pasado" lo interpretamos como el año de `fecha_inscripcion`, y la consulta recibe el año como parámetro.
+* "Año pasado" lo interpretamos como el año de `fecha_inscripcion`: `YEAR(GETDATE()) - 1`.
 * Pregunta: ¿les parece bien, o lo consultamos con la cátedra?
 
-## 4. Consultas 1 y 2 como stored procedures
+## 4. Consultas 1 y 2 como vistas
 
-Ya las dejamos como SP con parámetro de año, no como vistas, para poder probar con años pasados. Sólo confirmamos que el grupo está de acuerdo.
+Quedaron como vistas (`VW_TITULARES_DEUDA_ANIO_ACTUAL` y `VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR`) que usan `YEAR(GETDATE())` y `YEAR(GETDATE()) - 1`, siguiendo el enunciado al pie de la letra ("año en curso" y "año pasado"). Sólo confirmamos que el grupo está de acuerdo.
+
+## 5. Para informar (no hace falta decidir)
+
+* Las cuotas de arancel se generan con "puesta al día": si no se liquida un mes, la próxima liquidación completa las que falten y la numeración queda correlativa.
+* `SP_ALTA_DICTADO` ahora también carga el área del dictado. Las participaciones totales de actividad, profesional y área siguen sin garantizarse (sólo se documentan).
+* H9 dice que la primera cuota de arancel vence en la fecha de inscripción, pero §4.2 dice que la cuota k vence a los k × `meses_por_cuota` meses. Los scripts siguen H9; habría que corregir el texto de §4.2.

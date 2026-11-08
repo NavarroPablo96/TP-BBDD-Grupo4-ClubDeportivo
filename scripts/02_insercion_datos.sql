@@ -68,10 +68,14 @@ GO
 
 USE ClubDeportivo;
 GO
+-- Períodos relativos al año actual (el año anterior y el actual), para que las consultas
+-- que usan YEAR(GETDATE()) den los mismos resultados cualquiera sea el año en que se corra.
+DECLARE @anio INT = YEAR(GETDATE());
+
 INSERT INTO VALOR_CUOTA_SOCIAL (fecha_desde,fecha_hasta,monto_base)
 VALUES
-    ('2025-01-01', '2025-06-30', 10000.00),
-    ('2025-07-01', '2025-12-31', 12000.00),
-    ('2026-01-01', '2026-06-30', 15000.00),
-    ('2026-07-01', NULL,         18000.00);
+    (DATEFROMPARTS(@anio - 1, 1, 1), DATEFROMPARTS(@anio - 1, 6, 30),  10000.00),
+    (DATEFROMPARTS(@anio - 1, 7, 1), DATEFROMPARTS(@anio - 1, 12, 31), 12000.00),
+    (DATEFROMPARTS(@anio, 1, 1),     DATEFROMPARTS(@anio, 6, 30),      15000.00),
+    (DATEFROMPARTS(@anio, 7, 1),     NULL,                             18000.00);
 GO

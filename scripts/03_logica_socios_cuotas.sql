@@ -7,6 +7,7 @@ GO
 
 -- TR_INSCRIPCION_CATEGORIA_HABILITADA
 -- §4.2: un socio sólo puede inscribirse en una actividad habilitada para su categoría.
+-- Sólo valida las inscripciones activas: la baja por cambio de categoría (H12) no debe rechazarse a sí misma.
 CREATE OR ALTER TRIGGER TR_INSCRIPCION_CATEGORIA_HABILITADA
 ON INSCRIPCION
 AFTER INSERT, UPDATE
@@ -23,10 +24,48 @@ BEGIN
         LEFT JOIN HABILITADA_PARA h
             ON h.cod_actividad = i.cod_actividad
            AND h.nombre_categoria = s.nombre_categoria
-        WHERE h.cod_actividad IS NULL
+        WHERE i.estado = 'Activa'
+          AND h.cod_actividad IS NULL
     ) > 0
     BEGIN
         THROW 50001, 'El socio no puede inscribirse: la actividad no está habilitada para su categoría.', 1;
+    END;
+END;
+GO
+
+
+-- TR_INSCRIPCION_VIGENTE_UNICA
+-- H6: cada socio tiene como máximo una inscripción vigente (activa) por actividad.
+-- Se usa un trigger y no un índice único filtrado porque sqlcmd corre con QUOTED_IDENTIFIER OFF.
+CREATE OR ALTER TRIGGER TR_INSCRIPCION_VIGENTE_UNICA
+ON INSCRIPCION
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF (
+        SELECT COUNT(*)
+        FROM (
+            SELECT n.nro_socio_base,
+                   n.nro_orden,
+                   n.cod_actividad
+            FROM INSCRIPCION n
+            INNER JOIN (
+                SELECT DISTINCT nro_socio_base, nro_orden, cod_actividad
+                FROM inserted
+                WHERE estado = 'Activa'
+            ) i
+                ON i.nro_socio_base = n.nro_socio_base
+               AND i.nro_orden = n.nro_orden
+               AND i.cod_actividad = n.cod_actividad
+            WHERE n.estado = 'Activa'
+            GROUP BY n.nro_socio_base, n.nro_orden, n.cod_actividad
+            HAVING COUNT(*) > 1
+        ) repetidas
+    ) > 0
+    BEGIN
+        THROW 50014, 'El socio ya tiene una inscripción activa en esta actividad.', 1;
     END;
 END;
 GO
@@ -79,6 +118,43 @@ BEGIN
     BEGIN
         THROW 50003, 'El titular de un grupo familiar no puede pertenecer a la categoría infantiles.', 1;
     END;
+END;
+GO
+
+
+-- TR_SOCIO_CAMBIO_CATEGORIA
+-- H12: al cambiar la categoría de un socio se dan de baja sus inscripciones activas a actividades
+-- no habilitadas para la nueva categoría. Las compatibles se conservan.
+-- fecha_baja es la fecha actual (o la de inscripción si ésta es posterior, para respetar CK_INSCRIPCION_FECHA_BAJA).
+CREATE OR ALTER TRIGGER TR_SOCIO_CAMBIO_CATEGORIA
+ON SOCIO
+AFTER UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT UPDATE(nombre_categoria)
+        RETURN;
+
+    UPDATE i
+    SET estado = 'Baja',
+        fecha_baja = CASE WHEN CAST(GETDATE() AS DATE) < i.fecha_inscripcion
+                          THEN i.fecha_inscripcion
+                          ELSE CAST(GETDATE() AS DATE)
+                     END
+    FROM INSCRIPCION i
+    INNER JOIN inserted s
+        ON s.nro_socio_base = i.nro_socio_base
+       AND s.nro_orden = i.nro_orden
+    INNER JOIN deleted d
+        ON d.nro_socio_base = s.nro_socio_base
+       AND d.nro_orden = s.nro_orden
+    LEFT JOIN HABILITADA_PARA h
+        ON h.cod_actividad = i.cod_actividad
+       AND h.nombre_categoria = s.nombre_categoria
+    WHERE i.estado = 'Activa'
+      AND s.nombre_categoria <> d.nombre_categoria
+      AND h.cod_actividad IS NULL;
 END;
 GO
 
@@ -200,17 +276,20 @@ END;
 GO
 
 
--- SP_CONSULTA_TITULARES_DEUDA
--- Consulta 1 del enunciado: titulares de grupos con cuotas sociales adeudadas del año indicado,
+-- Las consultas 1 y 2 son vistas (decisión del usuario, pendientes_diseno.md TODO 8 y 9).
+-- Se eliminan los SP que las implementaban antes, por si se re-corre este script sobre una base existente.
+DROP PROCEDURE IF EXISTS SP_CONSULTA_TITULARES_DEUDA;
+DROP PROCEDURE IF EXISTS SP_CONSULTA_SOCIOS_GRATUITAS;
+GO
+
+
+-- VW_TITULARES_DEUDA_ANIO_ACTUAL
+-- Consulta 1 del enunciado: titulares de grupos con cuotas sociales adeudadas del año en curso,
 -- con el importe total adeudado y la cantidad de integrantes del grupo.
 -- La deuda no se almacena: es monto_a_pagar - monto_abonado (§4.2).
-CREATE OR ALTER PROCEDURE SP_CONSULTA_TITULARES_DEUDA
-    @anio INT
+CREATE OR ALTER VIEW VW_TITULARES_DEUDA_ANIO_ACTUAL
 AS
-BEGIN
-    SET NOCOUNT ON;
-
-    SELECT t.nro_socio_base,
+SELECT t.nro_socio_base,
        t.nombre AS nombre_titular,
        deuda.importe_adeudado,
        integrantes.cantidad_integrantes
@@ -218,7 +297,7 @@ FROM (
     SELECT nro_socio_base,
            SUM(monto_a_pagar - ISNULL(monto_abonado, 0)) AS importe_adeudado
     FROM CUOTA_SOCIAL
-    WHERE anio = @anio
+    WHERE anio = YEAR(GETDATE())
     GROUP BY nro_socio_base
     HAVING SUM(monto_a_pagar - ISNULL(monto_abonado, 0)) > 0
 ) deuda
@@ -232,21 +311,17 @@ INNER JOIN (
     GROUP BY nro_socio_base
 ) integrantes
     ON integrantes.nro_socio_base = deuda.nro_socio_base;
-END;
 GO
 
 
--- SP_CONSULTA_SOCIOS_GRATUITAS
+-- VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR
 -- Consulta 2 del enunciado: cantidad de socios por categoría inscriptos en todas las
--- actividades gratuitas durante el año indicado (año anterior al que se consulta).
--- Supuesto: si no hay actividades gratuitas, nadie cumple (el INNER JOIN deja el conjunto vacío).
-CREATE OR ALTER PROCEDURE SP_CONSULTA_SOCIOS_GRATUITAS
-    @anio INT
+-- actividades gratuitas durante el año pasado (YEAR(GETDATE()) - 1, según fecha_inscripcion).
+-- Cuenta también las inscripciones dadas de baja: el socio estuvo inscripto ese año (supuesto, TODO 5).
+-- Supuesto: si no hay actividades gratuitas, nadie cumple (el INNER JOIN deja el conjunto vacío; TODO 8).
+CREATE OR ALTER VIEW VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR
 AS
-BEGIN
-    SET NOCOUNT ON;
-
-    SELECT c.nombre_categoria,
+SELECT c.nombre_categoria,
        COUNT(q.nro_socio_base) AS cantidad_socios
 FROM CATEGORIA c
 LEFT JOIN (
@@ -260,7 +335,7 @@ LEFT JOIN (
         FROM INSCRIPCION i
         INNER JOIN ACTIVIDAD_GRATUITA g
             ON g.cod_actividad = i.cod_actividad
-        WHERE YEAR(i.fecha_inscripcion) = @anio
+        WHERE YEAR(i.fecha_inscripcion) = YEAR(GETDATE()) - 1
         GROUP BY i.nro_socio_base, i.nro_orden
         HAVING COUNT(DISTINCT i.cod_actividad) = (SELECT COUNT(*) FROM ACTIVIDAD_GRATUITA)
     ) todas
@@ -269,7 +344,6 @@ LEFT JOIN (
 ) q
     ON q.nombre_categoria = c.nombre_categoria
 GROUP BY c.nombre_categoria;
-END;
 GO
 
 
@@ -431,8 +505,8 @@ BEGIN
         WHERE cod_actividad = @cod_actividad;
 
         IF @arancel IS NOT NULL
-            INSERT INTO CUOTA_ARANCEL (nro_socio_base, nro_orden, cod_actividad, nro_cuota, monto_a_pagar, fecha_vencimiento, monto_abonado, fecha_pago)
-            VALUES (@nro_socio_base, @nro_orden, @cod_actividad, 1, @arancel, @fecha_inscripcion, NULL, NULL);
+            INSERT INTO CUOTA_ARANCEL (nro_socio_base, nro_orden, cod_actividad, fecha_inscripcion, nro_cuota, monto_a_pagar, fecha_vencimiento, monto_abonado, fecha_pago)
+            VALUES (@nro_socio_base, @nro_orden, @cod_actividad, @fecha_inscripcion, 1, @arancel, @fecha_inscripcion, NULL, NULL);
 
         COMMIT TRANSACTION;
     END TRY
@@ -446,9 +520,12 @@ GO
 
 
 -- SP_LIQUIDAR_CUOTA_ARANCEL
--- H8, H9 y §4.2: genera, para un mes, la cuota de arancel que vence en ese mes en cada
--- inscripción arancelada. La cuota k (k >= 0) vence k * meses_por_cuota meses después de la inscripción.
--- Supuesto: el SP se corre cada mes; si no se corre en un mes, esa cuota no se genera.
+-- H8, H9 y §4.2: genera las cuotas de arancel vencidas hasta el mes indicado que todavía no existan.
+-- La cuota n (n >= 1) vence (n - 1) * meses_por_cuota meses después de la inscripción (H9: la primera
+-- vence en la fecha de inscripción). Es una "puesta al día": si no se corrió en un mes, la próxima corrida
+-- completa las cuotas faltantes y la numeración queda correlativa. No duplica.
+-- Sólo genera cuotas de inscripciones activas; las dadas de baja (H12) únicamente las vencidas hasta su fecha de baja.
+-- Las cuotas ya generadas se mantienen (H8).
 CREATE OR ALTER PROCEDURE SP_LIQUIDAR_CUOTA_ARANCEL
     @anio INT,
     @mes INT
@@ -456,28 +533,60 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
+    DECLARE @max_k INT = (
+        SELECT ISNULL(MAX(((@anio * 12 + @mes) - (YEAR(i.fecha_inscripcion) * 12 + MONTH(i.fecha_inscripcion)))
+                          / a.meses_por_cuota), 0)
+        FROM INSCRIPCION i
+        INNER JOIN ACTIVIDAD_ARANCELADA a
+            ON a.cod_actividad = i.cod_actividad
+    );
+
     BEGIN TRY
         BEGIN TRANSACTION;
 
-        ;WITH vencimientos AS (
+        ;WITH numeros AS (
+            SELECT 0 AS k
+            UNION ALL
+            SELECT k + 1
+            FROM numeros
+            WHERE k < @max_k
+        ),
+        inscripciones AS (
             SELECT i.nro_socio_base,
                    i.nro_orden,
                    i.cod_actividad,
                    i.fecha_inscripcion,
+                   i.estado,
+                   i.fecha_baja,
                    a.arancel,
                    a.meses_por_cuota,
                    (@anio * 12 + @mes) - (YEAR(i.fecha_inscripcion) * 12 + MONTH(i.fecha_inscripcion)) AS meses_transcurridos
             FROM INSCRIPCION i
             INNER JOIN ACTIVIDAD_ARANCELADA a
                 ON a.cod_actividad = i.cod_actividad
+        ),
+        vencimientos AS (
+            SELECT v.nro_socio_base,
+                   v.nro_orden,
+                   v.cod_actividad,
+                   v.fecha_inscripcion,
+                   n.k + 1 AS nro_cuota,
+                   v.arancel,
+                   DATEADD(MONTH, n.k * v.meses_por_cuota, v.fecha_inscripcion) AS fecha_vencimiento
+            FROM inscripciones v
+            INNER JOIN numeros n
+                ON n.k * v.meses_por_cuota <= v.meses_transcurridos
+            WHERE v.estado = 'Activa'
+               OR DATEADD(MONTH, n.k * v.meses_por_cuota, v.fecha_inscripcion) <= v.fecha_baja
         )
-        INSERT INTO CUOTA_ARANCEL (nro_socio_base, nro_orden, cod_actividad, nro_cuota, monto_a_pagar, fecha_vencimiento, monto_abonado, fecha_pago)
+        INSERT INTO CUOTA_ARANCEL (nro_socio_base, nro_orden, cod_actividad, fecha_inscripcion, nro_cuota, monto_a_pagar, fecha_vencimiento, monto_abonado, fecha_pago)
         SELECT v.nro_socio_base,
                v.nro_orden,
                v.cod_actividad,
-               v.meses_transcurridos / v.meses_por_cuota + 1,
+               v.fecha_inscripcion,
+               v.nro_cuota,
                v.arancel,
-               DATEADD(MONTH, v.meses_transcurridos, v.fecha_inscripcion),
+               v.fecha_vencimiento,
                NULL,
                NULL
         FROM vencimientos v
@@ -485,10 +594,10 @@ BEGIN
             ON c.nro_socio_base = v.nro_socio_base
            AND c.nro_orden = v.nro_orden
            AND c.cod_actividad = v.cod_actividad
-           AND c.nro_cuota = v.meses_transcurridos / v.meses_por_cuota + 1
-        WHERE v.meses_transcurridos >= 0
-          AND v.meses_transcurridos % v.meses_por_cuota = 0
-          AND c.nro_socio_base IS NULL;
+           AND c.fecha_inscripcion = v.fecha_inscripcion
+           AND c.nro_cuota = v.nro_cuota
+        WHERE c.nro_socio_base IS NULL
+        OPTION (MAXRECURSION 0);
 
         COMMIT TRANSACTION;
     END TRY
@@ -639,9 +748,9 @@ GO
 
 
 -- SP_ALTA_DICTADO
--- H13 y §4.2: crea un dictado con un día, y un profesional a cargo, en una transacción.
--- Un dictado sin profesional no se puede crear: A_CARGO_DE exige @dni.
--- Supuesto: los días adicionales se cargan en DICTADO_DIA después; áreas en SE_DESARROLLA_EN.
+-- H13 y §4.1: crea un dictado con un día, un profesional a cargo y un área, en una transacción.
+-- Un dictado sin profesional ni área no se puede crear: A_CARGO_DE exige @dni y SE_DESARROLLA_EN exige @cod_area.
+-- Supuesto: los días, profesionales y áreas adicionales se cargan después en DICTADO_DIA, A_CARGO_DE y SE_DESARROLLA_EN.
 CREATE OR ALTER PROCEDURE SP_ALTA_DICTADO
     @cod_actividad INT,
     @fecha_desde DATE,
@@ -650,6 +759,7 @@ CREATE OR ALTER PROCEDURE SP_ALTA_DICTADO
     @hora_fin TIME,
     @dia_semana INT,
     @dni INT,
+    @cod_area VARCHAR(20),
     @cod_dictado INT OUTPUT
 AS
 BEGIN
@@ -668,6 +778,9 @@ BEGIN
 
         INSERT INTO A_CARGO_DE (cod_dictado, dni)
         VALUES (@cod_dictado, @dni);
+
+        INSERT INTO SE_DESARROLLA_EN (cod_dictado, cod_area)
+        VALUES (@cod_dictado, @cod_area);
 
         COMMIT TRANSACTION;
     END TRY

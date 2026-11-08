@@ -211,24 +211,38 @@ CREATE TABLE HABILITADA_PARA(
 );
 GO
 
--- INSCRIPCION (nro_socio_base, nro_orden, cod_actividad, fecha_inscripcion)
--- PK = CK = {(nro_socio_base, nro_orden, cod_actividad)} FK = {(nro_socio_base, nro_orden), cod_actividad}
+-- INSCRIPCION (nro_socio_base, nro_orden, cod_actividad, fecha_inscripcion, estado, fecha_baja)
+-- PK = CK = {(nro_socio_base, nro_orden, cod_actividad, fecha_inscripcion)} FK = {(nro_socio_base, nro_orden), cod_actividad}
+-- La PK incluye fecha_inscripcion para permitir reinscribirse tras una baja (H6, H12; pendientes_diseno.md TODO 5).
+-- Que haya a lo sumo una inscripción 'Activa' por socio y actividad lo garantiza TR_INSCRIPCION_VIGENTE_UNICA en 03.
 CREATE TABLE INSCRIPCION(
     nro_socio_base INT NOT NULL,
     nro_orden INT NOT NULL,
     cod_actividad INT NOT NULL,
     fecha_inscripcion DATE NOT NULL,
+    estado VARCHAR(10) NOT NULL
+        CONSTRAINT DF_INSCRIPCION_ESTADO DEFAULT 'Activa',
+    fecha_baja DATE NULL,
 
     CONSTRAINT PK_INSCRIPCION
-        PRIMARY KEY (nro_socio_base, nro_orden, cod_actividad),
+        PRIMARY KEY (nro_socio_base, nro_orden, cod_actividad, fecha_inscripcion),
 
     CONSTRAINT FK_INSCRIPCION_SOCIO
         FOREIGN KEY (nro_socio_base, nro_orden)
         REFERENCES SOCIO(nro_socio_base, nro_orden),
-    
+
     CONSTRAINT FK_INSCRIPCION_ACTIVIDAD
         FOREIGN KEY (cod_actividad)
-        REFERENCES ACTIVIDAD(cod_actividad)
+        REFERENCES ACTIVIDAD(cod_actividad),
+
+    -- H12: una inscripción está activa o dada de baja
+    CONSTRAINT CK_INSCRIPCION_ESTADO
+        CHECK (estado IN ('Activa', 'Baja')),
+
+    -- Activa: sin fecha de baja. Baja: con fecha de baja no anterior a la inscripción.
+    CONSTRAINT CK_INSCRIPCION_FECHA_BAJA
+        CHECK ((estado = 'Activa' AND fecha_baja IS NULL)
+            OR (estado = 'Baja' AND fecha_baja IS NOT NULL AND fecha_baja >= fecha_inscripcion))
 );
 GO
 
@@ -403,13 +417,14 @@ CREATE TABLE SE_DESARROLLA_EN(
 GO
 
 -- CUOTA ARANCEL esto es la agregación de SE_INSCRIBE
--- CUOTA_ARANCEL (nro_socio_base, nro_orden, cod_actividad, nro_cuota, monto_a_pagar, fecha_vencimiento, monto_abonado, fecha_pago)
--- PK = CK = {(nro_socio_base, nro_orden, cod_actividad, nro_cuota)}
--- FK = {(nro_socio_base, nro_orden, cod_actividad)}
+-- CUOTA_ARANCEL (nro_socio_base, nro_orden, cod_actividad, fecha_inscripcion, nro_cuota, monto_a_pagar, fecha_vencimiento, monto_abonado, fecha_pago)
+-- PK = CK = {(nro_socio_base, nro_orden, cod_actividad, fecha_inscripcion, nro_cuota)}
+-- FK = {(nro_socio_base, nro_orden, cod_actividad, fecha_inscripcion)}
 CREATE TABLE CUOTA_ARANCEL(
     nro_socio_base INT NOT NULL,
     nro_orden INT NOT NULL,
     cod_actividad INT NOT NULL,
+    fecha_inscripcion DATE NOT NULL,
     nro_cuota INT NOT NULL,
 
     monto_a_pagar DECIMAL(15,2) NOT NULL,
@@ -419,12 +434,12 @@ CREATE TABLE CUOTA_ARANCEL(
 
     -- Clave primaria compuesta
     CONSTRAINT PK_CUOTA_ARANCEL
-        PRIMARY KEY (nro_socio_base, nro_orden, cod_actividad, nro_cuota),
+        PRIMARY KEY (nro_socio_base, nro_orden, cod_actividad, fecha_inscripcion, nro_cuota),
 
     -- Clave foránea hacia la agregación INSCRIPCION
     CONSTRAINT FK_CUOTA_ARANCEL_INSCRIPCION
-        FOREIGN KEY (nro_socio_base,nro_orden,cod_actividad)
-        REFERENCES INSCRIPCION(nro_socio_base,nro_orden,cod_actividad),
+        FOREIGN KEY (nro_socio_base,nro_orden,cod_actividad,fecha_inscripcion)
+        REFERENCES INSCRIPCION(nro_socio_base,nro_orden,cod_actividad,fecha_inscripcion),
 
     -- Validación del número de cuota
     CONSTRAINT CK_CUOTA_ARANCEL_NRO_CUOTA

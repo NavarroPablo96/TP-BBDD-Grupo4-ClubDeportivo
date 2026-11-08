@@ -3,8 +3,11 @@ GO
 
 -- Datos de prueba para los triggers, SP y vistas de 03_logica_socios_cuotas.sql y 04_logica_areas_profesionales.sql.
 -- Se ejecuta después de 04 (base recién creada por 00). Usa nro_socio_base generados por SP_ALTA_GRUPO_FAMILIAR.
--- Los titulares de los grupos de 02 tienen nro_orden = 0, así que también aparecen en SP_CONSULTA_TITULARES_DEUDA.
+-- Los titulares de los grupos de 02 tienen nro_orden = 0, así que también aparecen en VW_TITULARES_DEUDA_ANIO_ACTUAL.
+-- Las fechas son relativas al año actual (@anio) y al anterior (@anio - 1), igual que los valores de cuota de 02,
+-- para que las vistas, que usan YEAR(GETDATE()), den los mismos resultados cualquiera sea el año en que se corra.
 
+DECLARE @anio INT = YEAR(GETDATE());
 DECLARE @id_a INT;
 DECLARE @id_b INT;
 DECLARE @id_c INT;
@@ -55,46 +58,46 @@ EXEC SP_ALTA_GRUPO_FAMILIAR
 INSERT INTO SOCIO (nro_socio_base, nro_orden, nombre, fecha_nacimiento, correo_electronico, celular, nombre_categoria)
 VALUES (@id_c, 1, 'Raul Sosa', '1978-01-30', NULL, '2236000033', 'mayores');
 
--- Cuotas sociales de enero a marzo 2026 para todos los grupos (incluye los de 02)
-EXEC SP_LIQUIDAR_CUOTA_SOCIAL @anio = 2026, @mes = 1;
-EXEC SP_LIQUIDAR_CUOTA_SOCIAL @anio = 2026, @mes = 2;
-EXEC SP_LIQUIDAR_CUOTA_SOCIAL @anio = 2026, @mes = 3;
+-- Cuotas sociales de enero a marzo del año actual para todos los grupos (incluye los de 02)
+EXEC SP_LIQUIDAR_CUOTA_SOCIAL @anio = @anio, @mes = 1;
+EXEC SP_LIQUIDAR_CUOTA_SOCIAL @anio = @anio, @mes = 2;
+EXEC SP_LIQUIDAR_CUOTA_SOCIAL @anio = @anio, @mes = 3;
 
 -- Grupo A: paga todo (sin deuda)
 UPDATE CUOTA_SOCIAL
 SET monto_abonado = monto_a_pagar,
-    fecha_pago = '2026-01-10'
+    fecha_pago = DATEFROMPARTS(@anio, 1, 10)
 WHERE nro_socio_base = @id_a
-  AND anio = 2026;
+  AND anio = @anio;
 
 -- Grupo B: paga sólo enero (deuda de febrero y marzo)
 UPDATE CUOTA_SOCIAL
 SET monto_abonado = monto_a_pagar,
-    fecha_pago = '2026-01-12'
+    fecha_pago = DATEFROMPARTS(@anio, 1, 12)
 WHERE nro_socio_base = @id_b
-  AND anio = 2026
+  AND anio = @anio
   AND mes = 1;
 
 -- Grupo C: pago parcial de enero, sin pagos el resto del año
 UPDATE CUOTA_SOCIAL
 SET monto_abonado = 5000.00,
-    fecha_pago = '2026-01-15'
+    fecha_pago = DATEFROMPARTS(@anio, 1, 15)
 WHERE nro_socio_base = @id_c
-  AND anio = 2026
+  AND anio = @anio
   AND mes = 1;
 
--- Inscripciones del año anterior (2025): Marta en las dos gratuitas, Raul en las dos, Tomas y Pablo sólo en una
+-- Inscripciones del año anterior: Marta en las dos gratuitas, Raul en las dos, Tomas y Pablo sólo en una
 INSERT INTO INSCRIPCION (nro_socio_base, nro_orden, cod_actividad, fecha_inscripcion)
-VALUES (@id_a, 0, 201, '2025-03-01'),
-       (@id_a, 0, 202, '2025-03-02'),
-       (@id_a, 1, 201, '2025-03-01'),
-       (@id_b, 0, 201, '2025-04-10'),
-       (@id_c, 1, 201, '2025-05-05'),
-       (@id_c, 1, 202, '2025-05-05');
+VALUES (@id_a, 0, 201, DATEFROMPARTS(@anio - 1, 3, 1)),
+       (@id_a, 0, 202, DATEFROMPARTS(@anio - 1, 3, 2)),
+       (@id_a, 1, 201, DATEFROMPARTS(@anio - 1, 3, 1)),
+       (@id_b, 0, 201, DATEFROMPARTS(@anio - 1, 4, 10)),
+       (@id_c, 1, 201, DATEFROMPARTS(@anio - 1, 5, 5)),
+       (@id_c, 1, 202, DATEFROMPARTS(@anio - 1, 5, 5));
 
--- Inscripción de 2026 de Pablo: no cuenta para la consulta del año anterior
+-- Inscripción del año actual de Pablo: no cuenta para la consulta del año anterior
 INSERT INTO INSCRIPCION (nro_socio_base, nro_orden, cod_actividad, fecha_inscripcion)
-VALUES (@id_b, 0, 202, '2026-02-01');
+VALUES (@id_b, 0, 202, DATEFROMPARTS(@anio, 2, 1));
 
 -- Cronograma: profesional y área aptos para la actividad 201, y un dictado válido
 INSERT INTO PROFESIONAL (dni, nombre, domicilio, telefono, titulo)
@@ -110,6 +113,7 @@ INSERT INTO APTA_PARA (cod_area, cod_actividad)
 VALUES ('AREA-01', 201);
 
 DECLARE @id_dictado INT;
+DECLARE @fecha_marta DATE = DATEFROMPARTS(@anio, 1, 15);
 
 EXEC SP_ALTA_DICTADO
     @cod_actividad = 201,
@@ -119,25 +123,23 @@ EXEC SP_ALTA_DICTADO
     @hora_fin = '11:00',
     @dia_semana = 1,
     @dni = 30111222,
+    @cod_area = 'AREA-01',
     @cod_dictado = @id_dictado OUTPUT;
 
-INSERT INTO SE_DESARROLLA_EN (cod_dictado, cod_area)
-VALUES (@id_dictado, 'AREA-01');
-
 -- Arancel: Marta se inscribe en la arancelada 301 (cuota 1 por adelantado) y se liquidan febrero y marzo
-EXEC SP_INSCRIBIR_ACTIVIDAD @nro_socio_base = @id_a, @nro_orden = 0, @cod_actividad = 301, @fecha_inscripcion = '2026-01-15';
-EXEC SP_LIQUIDAR_CUOTA_ARANCEL @anio = 2026, @mes = 2;
-EXEC SP_LIQUIDAR_CUOTA_ARANCEL @anio = 2026, @mes = 3;
+EXEC SP_INSCRIBIR_ACTIVIDAD @nro_socio_base = @id_a, @nro_orden = 0, @cod_actividad = 301, @fecha_inscripcion = @fecha_marta;
+EXEC SP_LIQUIDAR_CUOTA_ARANCEL @anio = @anio, @mes = 2;
+EXEC SP_LIQUIDAR_CUOTA_ARANCEL @anio = @anio, @mes = 3;
 
 -- Cuota 1 paga todo, cuota 2 pago parcial, cuota 3 sin pagar
 UPDATE CUOTA_ARANCEL
 SET monto_abonado = monto_a_pagar,
-    fecha_pago = '2026-01-15'
+    fecha_pago = DATEFROMPARTS(@anio, 1, 15)
 WHERE nro_socio_base = @id_a AND cod_actividad = 301 AND nro_cuota = 1;
 
 UPDATE CUOTA_ARANCEL
 SET monto_abonado = 2000.00,
-    fecha_pago = '2026-02-16'
+    fecha_pago = DATEFROMPARTS(@anio, 2, 16)
 WHERE nro_socio_base = @id_a AND cod_actividad = 301 AND nro_cuota = 2;
 
 -- Resultado esperado: 8000.00 (3000 de la cuota 2 + 5000 de la cuota 3)
@@ -147,11 +149,11 @@ WHERE nro_socio_base = @id_a AND cod_actividad = 301;
 GO
 
 -- Resultados esperados:
---   SP_CONSULTA_TITULARES_DEUDA 2026: Juan Perez 121500.00 (3); Carlos Gomez 90000.00 (2); Sofia Rodriguez 45000.00 (1);
+--   VW_TITULARES_DEUDA_ANIO_ACTUAL: Juan Perez 121500.00 (3); Carlos Gomez 90000.00 (2); Sofia Rodriguez 45000.00 (1);
 --     Roberto Fernandez 38250.00 (1); Laura Martinez 45000.00 (1); Pablo Diaz 30000.00 (1); Elena Sosa 78250.00 (2).
---   SP_CONSULTA_SOCIOS_GRATUITAS 2025: mayores 2 (Marta, Raul); el resto 0.
-EXEC SP_CONSULTA_TITULARES_DEUDA @anio = 2026;
-EXEC SP_CONSULTA_SOCIOS_GRATUITAS @anio = 2025;
+--   VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR: mayores 2 (Marta, Raul); el resto 0.
+SELECT * FROM VW_TITULARES_DEUDA_ANIO_ACTUAL;
+SELECT * FROM VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR;
 GO
 
 -- Pruebas de rechazo y control. Cada bloque corre en una transacción que se revierte.
@@ -245,8 +247,8 @@ GO
 -- E: cuota de arancel sobre una actividad gratuita -> rechaza 50008
 BEGIN TRY
     BEGIN TRANSACTION;
-    INSERT INTO CUOTA_ARANCEL (nro_socio_base, nro_orden, cod_actividad, nro_cuota, monto_a_pagar, fecha_vencimiento, monto_abonado, fecha_pago)
-    VALUES ((SELECT nro_socio_base FROM SOCIO WHERE nombre = 'Marta Ruiz'), 0, 201, 1, 100.00, '2025-03-01', NULL, NULL);
+    INSERT INTO CUOTA_ARANCEL (nro_socio_base, nro_orden, cod_actividad, fecha_inscripcion, nro_cuota, monto_a_pagar, fecha_vencimiento, monto_abonado, fecha_pago)
+    VALUES ((SELECT nro_socio_base FROM SOCIO WHERE nombre = 'Marta Ruiz'), 0, 201, DATEFROMPARTS(YEAR(GETDATE()) - 1, 3, 1), 1, 100.00, DATEFROMPARTS(YEAR(GETDATE()) - 1, 3, 1), NULL, NULL);
     PRINT 'E: NO RECHAZADO (error)';
     ROLLBACK;
 END TRY
@@ -400,4 +402,114 @@ BEGIN CATCH
     PRINT 'N: rechazo ' + CAST(ERROR_NUMBER() AS VARCHAR(10)) + ' ' + ERROR_MESSAGE();
     IF XACT_STATE() <> 0 ROLLBACK;
 END CATCH;
+GO
+
+-- O (H12): al cambiar la categoría, se da de baja la inscripción no habilitada para la nueva y se conserva la compatible.
+-- El socio es mayores y se inscribe en 202 (mayores y vitalicios) y 301 (sólo mayores); al pasar a vitalicios, 301 queda en Baja.
+BEGIN TRY
+    BEGIN TRANSACTION;
+    DECLARE @o INT;
+    DECLARE @hoy_o DATE = CAST(GETDATE() AS DATE);
+    EXEC SP_ALTA_GRUPO_FAMILIAR @telefono = '2236000011', @domicilio = 'Calle Test 3', @nombre_titular = 'Titular O', @fecha_nacimiento = '1970-01-01', @nombre_categoria = 'mayores', @nro_socio_base = @o OUTPUT;
+    EXEC SP_INSCRIBIR_ACTIVIDAD @nro_socio_base = @o, @nro_orden = 0, @cod_actividad = 202, @fecha_inscripcion = @hoy_o;
+    EXEC SP_INSCRIBIR_ACTIVIDAD @nro_socio_base = @o, @nro_orden = 0, @cod_actividad = 301, @fecha_inscripcion = @hoy_o;
+    UPDATE SOCIO SET nombre_categoria = 'vitalicios' WHERE nro_socio_base = @o AND nro_orden = 0;
+    IF (SELECT estado FROM INSCRIPCION WHERE nro_socio_base = @o AND cod_actividad = 202) = 'Activa'
+       AND (SELECT estado FROM INSCRIPCION WHERE nro_socio_base = @o AND cod_actividad = 301) = 'Baja'
+       AND (SELECT COUNT(*) FROM CUOTA_ARANCEL WHERE nro_socio_base = @o AND cod_actividad = 301) = 1
+        PRINT 'O: control OK (202 Activa, 301 Baja, cuota 1 conservada)';
+    ELSE
+        PRINT 'O: control FALLÓ';
+    ROLLBACK;
+END TRY
+BEGIN CATCH
+    PRINT 'O: control FALLÓ ' + CAST(ERROR_NUMBER() AS VARCHAR(10)) + ' ' + ERROR_MESSAGE();
+    IF XACT_STATE() <> 0 ROLLBACK;
+END CATCH;
+GO
+
+-- P1 (control): tras una baja, el socio puede reinscribirse en la misma actividad (otra fecha_inscripcion).
+BEGIN TRY
+    BEGIN TRANSACTION;
+    DECLARE @p1 INT;
+    DECLARE @hoy_p1 DATE = CAST(GETDATE() AS DATE);
+    DECLARE @manana_p1 DATE = DATEADD(DAY, 1, @hoy_p1);
+    EXEC SP_ALTA_GRUPO_FAMILIAR @telefono = '2236000012', @domicilio = 'Calle Test 4', @nombre_titular = 'Titular P1', @fecha_nacimiento = '1970-01-01', @nombre_categoria = 'mayores', @nro_socio_base = @p1 OUTPUT;
+    EXEC SP_INSCRIBIR_ACTIVIDAD @nro_socio_base = @p1, @nro_orden = 0, @cod_actividad = 301, @fecha_inscripcion = @hoy_p1;
+    UPDATE SOCIO SET nombre_categoria = 'vitalicios' WHERE nro_socio_base = @p1 AND nro_orden = 0;
+    UPDATE SOCIO SET nombre_categoria = 'mayores' WHERE nro_socio_base = @p1 AND nro_orden = 0;
+    EXEC SP_INSCRIBIR_ACTIVIDAD @nro_socio_base = @p1, @nro_orden = 0, @cod_actividad = 301, @fecha_inscripcion = @manana_p1;
+    IF (SELECT COUNT(*) FROM INSCRIPCION WHERE nro_socio_base = @p1 AND cod_actividad = 301 AND estado = 'Activa') = 1
+       AND (SELECT COUNT(*) FROM INSCRIPCION WHERE nro_socio_base = @p1 AND cod_actividad = 301 AND estado = 'Baja') = 1
+        PRINT 'P1: control OK (reinscripción tras la baja)';
+    ELSE
+        PRINT 'P1: control FALLÓ';
+    ROLLBACK;
+END TRY
+BEGIN CATCH
+    PRINT 'P1: control FALLÓ ' + CAST(ERROR_NUMBER() AS VARCHAR(10)) + ' ' + ERROR_MESSAGE();
+    IF XACT_STATE() <> 0 ROLLBACK;
+END CATCH;
+GO
+
+-- P2: dos inscripciones activas del mismo socio en la misma actividad -> rechaza 50014
+BEGIN TRY
+    BEGIN TRANSACTION;
+    DECLARE @p2 INT;
+    DECLARE @hoy_p2 DATE = CAST(GETDATE() AS DATE);
+    EXEC SP_ALTA_GRUPO_FAMILIAR @telefono = '2236000013', @domicilio = 'Calle Test 5', @nombre_titular = 'Titular P2', @fecha_nacimiento = '1970-01-01', @nombre_categoria = 'mayores', @nro_socio_base = @p2 OUTPUT;
+    EXEC SP_INSCRIBIR_ACTIVIDAD @nro_socio_base = @p2, @nro_orden = 0, @cod_actividad = 301, @fecha_inscripcion = @hoy_p2;
+    INSERT INTO INSCRIPCION (nro_socio_base, nro_orden, cod_actividad, fecha_inscripcion)
+    VALUES (@p2, 0, 301, DATEADD(DAY, 1, @hoy_p2));
+    PRINT 'P2: NO RECHAZADO (error)';
+    ROLLBACK;
+END TRY
+BEGIN CATCH
+    PRINT 'P2: rechazo ' + CAST(ERROR_NUMBER() AS VARCHAR(10)) + ' ' + ERROR_MESSAGE();
+    IF XACT_STATE() <> 0 ROLLBACK;
+END CATCH;
+GO
+
+-- Q (control): puesta al día. El socio se inscribe en 301 en enero y se liquida directamente abril:
+-- se generan las cuotas 1 a 4 sin huecos, y correr de nuevo no duplica.
+BEGIN TRY
+    BEGIN TRANSACTION;
+    DECLARE @q INT;
+    DECLARE @anio_q INT = YEAR(GETDATE());
+    DECLARE @enero_q DATE = DATEFROMPARTS(@anio_q, 1, 10);
+    EXEC SP_ALTA_GRUPO_FAMILIAR @telefono = '2236000014', @domicilio = 'Calle Test 6', @nombre_titular = 'Titular Q', @fecha_nacimiento = '1970-01-01', @nombre_categoria = 'mayores', @nro_socio_base = @q OUTPUT;
+    EXEC SP_INSCRIBIR_ACTIVIDAD @nro_socio_base = @q, @nro_orden = 0, @cod_actividad = 301, @fecha_inscripcion = @enero_q;
+    EXEC SP_LIQUIDAR_CUOTA_ARANCEL @anio = @anio_q, @mes = 4;
+    EXEC SP_LIQUIDAR_CUOTA_ARANCEL @anio = @anio_q, @mes = 4;
+    IF (SELECT COUNT(*) FROM CUOTA_ARANCEL WHERE nro_socio_base = @q) = 4
+       AND (SELECT MAX(nro_cuota) FROM CUOTA_ARANCEL WHERE nro_socio_base = @q) = 4
+       AND (SELECT MAX(fecha_vencimiento) FROM CUOTA_ARANCEL WHERE nro_socio_base = @q) = DATEFROMPARTS(@anio_q, 4, 10)
+        PRINT 'Q: control OK (cuotas 1 a 4 correlativas, sin duplicar)';
+    ELSE
+        PRINT 'Q: control FALLÓ';
+    ROLLBACK;
+END TRY
+BEGIN CATCH
+    PRINT 'Q: control FALLÓ ' + CAST(ERROR_NUMBER() AS VARCHAR(10)) + ' ' + ERROR_MESSAGE();
+    IF XACT_STATE() <> 0 ROLLBACK;
+END CATCH;
+GO
+
+-- R: SP_ALTA_DICTADO con un área no apta para la actividad -> rechaza 50006 y no deja filas.
+-- El área de prueba se inserta fuera de la transacción del SP y se borra al final.
+INSERT INTO AREA (cod_area, ubicacion, capacidad, estado_mantenimiento) VALUES ('AREA-98', 'Pileta', 10, 'Bueno');
+DECLARE @dictados_antes INT = (SELECT COUNT(*) FROM DICTADO);
+DECLARE @id_r INT;
+BEGIN TRY
+    EXEC SP_ALTA_DICTADO @cod_actividad = 201, @fecha_desde = '2026-03-01', @fecha_fin = '2026-06-30', @hora_inicio = '15:00', @hora_fin = '16:00', @dia_semana = 3, @dni = 30111222, @cod_area = 'AREA-98', @cod_dictado = @id_r OUTPUT;
+    PRINT 'R: NO RECHAZADO (error)';
+END TRY
+BEGIN CATCH
+    PRINT 'R: rechazo ' + CAST(ERROR_NUMBER() AS VARCHAR(10)) + ' ' + ERROR_MESSAGE();
+END CATCH;
+IF (SELECT COUNT(*) FROM DICTADO) = @dictados_antes
+    PRINT 'R: sin filas nuevas en DICTADO';
+ELSE
+    PRINT 'R: quedaron filas en DICTADO (error)';
+DELETE FROM AREA WHERE cod_area = 'AREA-98';
 GO
