@@ -14,6 +14,8 @@
 - `docs/`: resolución del grupo, pendientes de diseño y spec de estado (`SPEC_ESTADO.md`).
 - `docs/referencias/`: enunciado, apunte de la cátedra y bibliografía.
 
+- `app-host/`: aplicación web (Next.js) para operar la base. Ver `app-host/README.md` y `docs/APP_HOST_FEATURES.md`.
+
 ### Ejecución
 Ejecutar en orden, desde SSMS o con `sqlcmd` desde la raíz del repo:
 1. `scripts/00_creacion_bd.sql`
