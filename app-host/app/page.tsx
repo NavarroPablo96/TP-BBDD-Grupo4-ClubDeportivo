@@ -24,10 +24,6 @@ export default async function Home() {
     <div className="mx-auto max-w-5xl space-y-6">
       <header className="rounded-2xl bg-gradient-to-r from-indigo-600 to-fuchsia-600 p-6 text-white shadow-lg">
         <h1 className="text-2xl font-bold">Club Deportivo</h1>
-        <p className="mt-1 max-w-2xl text-sm text-indigo-100">
-          Host para operar la base <code className="rounded bg-white/20 px-1">ClubDeportivo</code> en SQL Server.
-          Los formularios no validan: lo que se carga llega a la base y los triggers, constraints y SP deciden.
-        </p>
         <div className="mt-4 flex flex-wrap gap-2 text-sm font-semibold">
           <Link href="/consultas" className="rounded-lg bg-white px-3 py-1.5 text-indigo-700 hover:bg-indigo-50">Consultas y vistas</Link>
           <Link href="/procedimientos" className="rounded-lg bg-white/20 px-3 py-1.5 hover:bg-white/30">Procedimientos</Link>

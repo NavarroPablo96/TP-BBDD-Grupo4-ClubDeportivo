@@ -9,6 +9,8 @@ export type ProcParam = {
   /** Parámetro OUTPUT: no se carga, se muestra el valor devuelto. */
   output?: boolean;
   placeholder?: string;
+  /** Columna de la que salen las sugerencias (su dominio cerrado o los valores de su tabla padre). */
+  source?: { table: string; column: string };
 };
 
 export type ProcDef = {
@@ -28,7 +30,7 @@ export const PROCEDURES: ProcDef[] = [
       { name: "domicilio", label: "Domicilio", type: "text" },
       { name: "nombre_titular", label: "Nombre del titular", type: "text" },
       { name: "fecha_nacimiento", label: "Fecha de nacimiento", type: "date" },
-      { name: "nombre_categoria", label: "Categoría", type: "text", placeholder: "mayores / vitalicios / infantiles" },
+      { name: "nombre_categoria", label: "Categoría", type: "text", placeholder: "mayores / vitalicios / infantiles", source: { table: "CATEGORIA", column: "nombre_categoria" } },
       { name: "correo_electronico", label: "Correo electrónico", type: "text", optional: true },
       { name: "celular", label: "Celular", type: "text", optional: true },
       { name: "nro_socio_base", label: "nro_socio_base generado", type: "int", output: true },
@@ -42,7 +44,7 @@ export const PROCEDURES: ProcDef[] = [
       { name: "cod_actividad", label: "Código de actividad", type: "int" },
       { name: "nombre", label: "Nombre", type: "text" },
       { name: "arancel", label: "Arancel", type: "decimal" },
-      { name: "meses_por_cuota", label: "Meses por cuota", type: "int" },
+      { name: "meses_por_cuota", label: "Meses por cuota", type: "int", source: { table: "ACTIVIDAD_ARANCELADA", column: "meses_por_cuota" } },
     ],
   },
   {
@@ -59,14 +61,14 @@ export const PROCEDURES: ProcDef[] = [
     title: "Alta de dictado",
     description: "Crea dictado, un día, un profesional a cargo y un área.",
     params: [
-      { name: "cod_actividad", label: "Código de actividad", type: "int" },
+      { name: "cod_actividad", label: "Código de actividad", type: "int", source: { table: "DICTADO", column: "cod_actividad" } },
       { name: "fecha_desde", label: "Fecha desde", type: "date" },
       { name: "fecha_fin", label: "Fecha fin", type: "date" },
       { name: "hora_inicio", label: "Hora inicio", type: "time", placeholder: "HH:MM" },
       { name: "hora_fin", label: "Hora fin", type: "time", placeholder: "HH:MM" },
-      { name: "dia_semana", label: "Día de la semana", type: "int", placeholder: "1 a 7" },
-      { name: "dni", label: "DNI del profesional", type: "int" },
-      { name: "cod_area", label: "Código de área", type: "text" },
+      { name: "dia_semana", label: "Día de la semana", type: "int", placeholder: "1 a 7", source: { table: "DICTADO_DIA", column: "dia_semana" } },
+      { name: "dni", label: "DNI del profesional", type: "int", source: { table: "A_CARGO_DE", column: "dni" } },
+      { name: "cod_area", label: "Código de área", type: "text", source: { table: "SE_DESARROLLA_EN", column: "cod_area" } },
       { name: "cod_dictado", label: "cod_dictado generado", type: "int", output: true },
     ],
   },
@@ -75,9 +77,9 @@ export const PROCEDURES: ProcDef[] = [
     title: "Inscribir socio en actividad",
     description: "Si la actividad es arancelada genera la cuota 1 por adelantado.",
     params: [
-      { name: "nro_socio_base", label: "nro_socio_base", type: "int" },
-      { name: "nro_orden", label: "nro_orden", type: "int" },
-      { name: "cod_actividad", label: "Código de actividad", type: "int" },
+      { name: "nro_socio_base", label: "nro_socio_base", type: "int", source: { table: "INSCRIPCION", column: "nro_socio_base" } },
+      { name: "nro_orden", label: "nro_orden", type: "int", source: { table: "INSCRIPCION", column: "nro_orden" } },
+      { name: "cod_actividad", label: "Código de actividad", type: "int", source: { table: "INSCRIPCION", column: "cod_actividad" } },
       { name: "fecha_inscripcion", label: "Fecha de inscripción", type: "date" },
     ],
   },
@@ -87,7 +89,7 @@ export const PROCEDURES: ProcDef[] = [
     description: "Genera la cuota social del mes para cada grupo que no la tenga.",
     params: [
       { name: "anio", label: "Año", type: "int" },
-      { name: "mes", label: "Mes", type: "int" },
+      { name: "mes", label: "Mes", type: "int", source: { table: "CUOTA_SOCIAL", column: "mes" } },
     ],
   },
   {
@@ -96,7 +98,7 @@ export const PROCEDURES: ProcDef[] = [
     description: "Puesta al día: genera las cuotas de arancel vencidas hasta el mes indicado.",
     params: [
       { name: "anio", label: "Año", type: "int" },
-      { name: "mes", label: "Mes", type: "int" },
+      { name: "mes", label: "Mes", type: "int", source: { table: "CUOTA_SOCIAL", column: "mes" } },
     ],
   },
 ];

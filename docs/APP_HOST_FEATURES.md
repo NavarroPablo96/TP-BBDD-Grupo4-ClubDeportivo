@@ -24,6 +24,7 @@ Consecuencias de diseño:
 | F6 | Consultas y vistas | `/consultas` | `VW_TITULARES_DEUDA_ANIO_ACTUAL`, `VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR` y `VW_CONFLICTOS_DICTADO`. Muestra "sin filas" cuando la vista no devuelve nada (decisión TODO 8). |
 | F7 | Stored procedures | `/procedimientos` | Un formulario por SP: `SP_ALTA_GRUPO_FAMILIAR`, `SP_ALTA_ACTIVIDAD_ARANCELADA`, `SP_ALTA_ACTIVIDAD_GRATUITA`, `SP_ALTA_DICTADO`, `SP_INSCRIBIR_ACTIVIDAD`, `SP_LIQUIDAR_CUOTA_SOCIAL`, `SP_LIQUIDAR_CUOTA_ARANCEL`. Muestra parámetros `OUTPUT` (`nro_socio_base`, `cod_dictado`), result sets y mensajes `PRINT`. |
 | F9 | Consola SQL libre | `/sql` | Ejecuta T-SQL arbitrario, con lotes separados por `GO` (corta en el primer error y dice qué lote falló). Muestra result sets, mensajes `PRINT` y filas afectadas. Por defecto corre en una transacción que **siempre se deshace** (ROLLBACK), para probar triggers y constraints sin ensuciar los datos; desmarcando la opción los cambios persisten (con confirmación). Ctrl+Enter ejecuta. |
+| F10 | Sugerencias (`datalist`) | tablas y `/procedimientos` | Los campos de dominio cerrado (CHECK) y de clave foránea ofrecen los valores válidos, con etiqueta descriptiva (ej.: `nro_socio_base` → `1 = Juan Perez`), pero aceptan cualquier valor. Ver §5. |
 | F8 | Resultado de cada operación | todas | Banner verde (éxito) o rojo (rechazo con número de error y mensaje del motor). |
 
 ## 3. Backlog (no implementado)
@@ -37,7 +38,7 @@ Ordenado por utilidad para el TP. Ninguno cambia el principio de la sección 1.
 5. **Registrar pago** de cuota (`UPDATE` guiado de `monto_abonado` y `fecha_pago`), hoy se hace por edición de la fila.
 6. **Baja de inscripción** guiada (hoy por edición de `estado` y `fecha_baja`).
 7. **Reinicio de datos**: botón que re-ejecuta `00` a `05` (destructivo: pedir confirmación). Hoy se hace con `sqlcmd`.
-8. **Selectores / sugerencias** para claves foráneas y dominios cerrados: ver §5 (análisis de candidatos y decisión pendiente).
+8. ~~Selectores / sugerencias~~: implementado como F10 con `datalist` (ver §5).
 9. **Pruebas automatizadas** de la app (Playwright) sobre una base de prueba.
 
 ## 4. Limitaciones conocidas
@@ -50,6 +51,8 @@ Ordenado por utilidad para el TP. Ninguno cambia el principio de la sección 1.
 - Los `SP_ALTA_*` siguen siendo la única vía que garantiza la participación total; el alta directa (F3) la saltea, como ya está documentado en `CLAUDE.md` §3.
 
 ## 5. Inputs candidatos a select
+
+**Estado: implementado con `datalist` (F10).** Lo que sigue es el relevamiento que lo originó; las §5.1 a §5.3 describen lo que hoy ofrece sugerencias.
 
 Relevamiento hecho sobre `scripts/01_creacion_tablas.sql` (FK y CHECK) y las firmas de `lib/procedures.ts`. Hoy todos los campos son texto libre.
 
@@ -94,8 +97,17 @@ Relevamiento hecho sobre `scripts/01_creacion_tablas.sql` (FK y CHECK) y las fir
 - Fechas y horas: ya implementado con `<input type="date">` / `type="time"` (calendario y selector de hora nativos) en los formularios de tablas y de SP. Limitación: el navegador no deja enviar una fecha inválida (ej.: 31/02) ni texto libre en esos campos; para probar fechas mal formadas usar la consola SQL.
 - `anio` de las liquidaciones: sin dominio definido en el modelo.
 
-### 5.5 Cómo implementarlo sin duplicar el modelo
+### 5.5 Cómo está implementado
 
 - FK: leer `sys.foreign_keys` en `lib/schema.ts` (columnas hijas y padre) y cargar las opciones desde la tabla padre al renderizar la página. Las tablas chicas (`CATEGORIA`, `ACTIVIDAD`, `PROFESIONAL`, `AREA`) se cargan completas; `GRUPO_FAMILIAR`, `SOCIO` e `INSCRIPCION` pueden crecer, por lo que conviene limitar a las primeras N filas o buscar por texto.
 - Dominios cerrados: parsear `sys.check_constraints` (`IN (...)` y `BETWEEN a AND b`) en vez de escribir las listas a mano.
 - SP: agregar a cada parámetro de `lib/procedures.ts` un campo `source` (`"CATEGORIA"`, `"ACTIVIDAD"`, `"SOCIO"`, `{ enum: [...] }`) con el origen de sus opciones.
+
+Detalle de la implementación:
+
+- `lib/schema.ts` lee `sys.foreign_keys` y `sys.check_constraints` y deja en cada columna `fk` (tabla y columna padre; gana la FK simple sobre la compuesta) y `domain` (valores del CHECK). `lib/domains.ts` interpreta los CHECK de una sola columna (`IN` y `BETWEEN`, hasta 31 valores).
+- `optionsForColumn` devuelve el dominio o los valores distintos de la columna padre (hasta 200). La etiqueta sale del nombre de la columna: `nro_socio_base` → titular, `cod_actividad` → nombre, `dni` → profesional, `cod_area` → ubicación, `cod_dictado` → actividad.
+- En los SP, cada parámetro declara `source: { table, column }` en `lib/procedures.ts`: tiene las mismas sugerencias que esa columna. Si cambia un SP, actualizar también su `source`.
+- `components/SuggestInput.tsx` renderiza el `<input list>` y su `<datalist>`. Los campos `date` y `time` conservan el calendario y no llevan lista.
+- Con la base caída, las páginas de procedimientos muestran los formularios sin sugerencias.
+- Límite: el navegador filtra las sugerencias por lo que ya está escrito en el campo; al editar una fila hay que borrar el valor para ver las demás.

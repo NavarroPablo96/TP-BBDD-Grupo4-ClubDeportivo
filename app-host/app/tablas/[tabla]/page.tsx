@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { query, quoteName, toDbError } from "@/lib/db";
-import { getTable, selectExpr } from "@/lib/schema";
+import { getTable, loadTableOptions, selectExpr } from "@/lib/schema";
 import { TableManager } from "@/components/TableManager";
 
 const ROW_LIMIT = 500;
@@ -23,6 +23,8 @@ export default async function TablePage({ params }: { params: Promise<{ tabla: s
     error = toDbError(e).message;
   }
 
+  const options = await loadTableOptions(table).catch(() => ({}));
+
   return (
     <div className="mx-auto max-w-7xl space-y-4">
       <header>
@@ -33,7 +35,7 @@ export default async function TablePage({ params }: { params: Promise<{ tabla: s
         </p>
       </header>
       {error && <p role="alert" className="rounded-lg bg-red-50 p-3 font-mono text-xs text-red-800">{error}</p>}
-      <TableManager table={table.name} columns={table.columns} rows={rows} />
+      <TableManager table={table.name} columns={table.columns} rows={rows} options={options} />
     </div>
   );
 }

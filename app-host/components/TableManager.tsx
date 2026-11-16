@@ -4,6 +4,8 @@ import { useState, useTransition } from "react";
 import { deleteRow, insertRow, updateRow, type ActionResult } from "@/app/actions";
 import { DataTable } from "./DataTable";
 import { ResultBanner } from "./ResultBanner";
+import { SuggestInput } from "./SuggestInput";
+import type { Option } from "@/lib/types";
 
 type Column = { name: string; type: string; nullable: boolean; identity: boolean; isPk: boolean };
 type Row = Record<string, unknown>;
@@ -19,7 +21,17 @@ function inputKind(c: Column): "date" | "time" | "text" {
   return c.type === "date" || c.type === "time" ? c.type : "text";
 }
 
-export function TableManager({ table, columns, rows }: { table: string; columns: Column[]; rows: Row[] }) {
+export function TableManager({
+  table,
+  columns,
+  rows,
+  options,
+}: {
+  table: string;
+  columns: Column[];
+  rows: Row[];
+  options: Record<string, Option[]>;
+}) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<Record<string, string> | null>(null);
   const [result, setResult] = useState<ActionResult | null>(null);
@@ -58,9 +70,6 @@ export function TableManager({ table, columns, rows }: { table: string; columns:
       >
         <h2 className="mb-3 text-sm font-semibold">
           {editing ? "Editar fila" : "Nueva fila"}
-          <span className="ml-2 font-normal text-muted">
-            Sin validación en la app: los valores van tal cual a la base (vacío = NULL).
-          </span>
         </h2>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {formCols.map((c) => (
@@ -69,13 +78,14 @@ export function TableManager({ table, columns, rows }: { table: string; columns:
                 {c.name}
                 {c.isPk && <span className="rounded bg-amber-100 px-1 text-[10px] text-amber-800">PK</span>}
               </span>
-              <input
+              <SuggestInput
+                id={`${table}-${c.name}`}
                 type={inputKind(c)}
                 step={c.type === "time" ? 1 : undefined}
                 value={values[c.name] ?? ""}
-                onChange={(e) => setValues({ ...values, [c.name]: e.target.value })}
+                onChange={(v) => setValues({ ...values, [c.name]: v })}
                 placeholder={inputHint(c)}
-                className="mt-1 w-full rounded-md border border-line bg-white px-2 py-1.5 text-sm text-foreground outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+                options={options[c.name]}
               />
             </label>
           ))}

@@ -5,11 +5,13 @@ import { executeProcedure, type ActionResult } from "@/app/actions";
 import type { ProcDef } from "@/lib/procedures";
 import { DataTable } from "./DataTable";
 import { ResultBanner } from "./ResultBanner";
+import { SuggestInput } from "./SuggestInput";
+import type { Option } from "@/lib/types";
 
 /** Calendario y selector de hora nativos; el resto, texto libre (sin validar). */
 const inputType = (t: string): string => (t === "date" || t === "time" ? t : "text");
 
-export function ProcedureForm({ proc }: { proc: ProcDef }) {
+export function ProcedureForm({ proc, options }: { proc: ProcDef; options: Record<string, Option[]> }) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [result, setResult] = useState<ActionResult | null>(null);
   const [pending, startTransition] = useTransition();
@@ -31,12 +33,13 @@ export function ProcedureForm({ proc }: { proc: ProcDef }) {
             <label key={p.name} className="text-xs font-medium text-muted">
               {p.label}
               {p.optional && <span className="ml-1 font-normal">(opcional)</span>}
-              <input
+              <SuggestInput
+                id={`${proc.name}-${p.name}`}
                 type={inputType(p.type)}
                 value={values[p.name] ?? ""}
-                onChange={(e) => setValues({ ...values, [p.name]: e.target.value })}
+                onChange={(v) => setValues({ ...values, [p.name]: v })}
                 placeholder={p.placeholder ?? p.type}
-                className="mt-1 w-full rounded-md border border-line bg-white px-2 py-1.5 text-sm text-foreground outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+                options={options[p.name]}
               />
             </label>
           ))}
