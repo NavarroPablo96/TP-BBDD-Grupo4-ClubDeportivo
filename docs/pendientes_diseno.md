@@ -1,6 +1,6 @@
 # Pendientes de revisión del diseño
 
-Registro de decisiones de diseño: qué está abierto, qué se decidió y qué quedó aplicado en los scripts. El estado general del proyecto está en [SPEC_ESTADO.md](SPEC_ESTADO.md). La consulta redactada para el grupo (TODO 3, 5, 8 y 9) está en [consulta_decisiones_abiertas.md](consulta_decisiones_abiertas.md).
+Registro de decisiones de diseño: qué está abierto, qué se decidió y qué quedó aplicado en los scripts. El estado general del proyecto está en [SPEC_ESTADO.md](SPEC_ESTADO.md). La consulta redactada para el grupo (TODO 3, 8 y 9) está en [consulta_decisiones_abiertas.md](consulta_decisiones_abiertas.md).
 
 ## Resumen
 
@@ -10,7 +10,7 @@ Registro de decisiones de diseño: qué está abierto, qué se decidió y qué q
 | 2 | Jerarquía de `ACTIVIDAD` | Aplicado (con limitación) |
 | 3 | Estado de mantenimiento de las áreas (historial) | Aplicado como historial; lista de estados a confirmar con el grupo |
 | 4 | Tipos de `PROFESIONAL.dni` y `AREA.cod_area` | Aplicado |
-| 5 | Baja de inscripciones al cambiar de categoría (H12) | Aplicado; supuestos a confirmar con el grupo |
+| 5 | Baja de inscripciones al cambiar de categoría (H12) | Cerrado: se deja la baja automática con historial |
 | 6 | Categorías y `nro_orden` | Aplicado |
 | 7 | Vencimiento de la cuota social | Cerrado |
 | 8 | Consulta 2: "todas las gratuitas" y "año pasado" | Parcial: caso vacío decidido (no devuelve filas); falta confirmar "año pasado" |
@@ -19,7 +19,7 @@ Registro de decisiones de diseño: qué está abierto, qué se decidió y qué q
 | 11 | Restricciones de cuotas que sólo cubren los SP | Aplicado: puesta al día en `SP_LIQUIDAR_CUOTA_ARANCEL`; el resto, limitación documentada |
 | 12 | Inconsistencias en TP_BBDD_Grupo_4.md | **Abierto** (requiere OK del grupo) |
 
-Los TODO 10 a 12 surgieron de comparar `TP_BBDD_Grupo_4.md` (§4.1 y §4.2) con los scripts. Los TODO 5, 10 y 11 se resolvieron con decisiones del usuario; los supuestos que el grupo todavía no confirmó están marcados en cada uno.
+Los TODO 10 a 12 surgieron de comparar `TP_BBDD_Grupo_4.md` (§4.1 y §4.2) con los scripts. Los TODO 5, 10 y 11 se resolvieron con decisiones del usuario.
 
 ---
 
@@ -50,32 +50,6 @@ HISTORIAL_AREA_ESTADO (cod_area, fecha_desde, nombre_estado)  PK = CK = {(cod_ar
 - [x] Adaptar la app host.
 - [ ] Confirmar con el grupo la lista de estados y que el historial es lo deseado (cada estado extra es una fila de `ESTADO_AREA` en `02`).
 - [ ] Reflejar las dos tablas nuevas y la restricción de la fecha en §4.1 y §4.2 de la resolución, y su normalización en §5 (TODO 12).
-
-## TODO 5: Baja de inscripciones al cambiar de categoría (H12)
-
-**Estado:** APLICADO por decisión del usuario, con supuestos que el grupo todavía no confirmó. Cambia el modelo de TP_BBDD_Grupo_4.md §4.1 (ver TODO 12).
-
-H12 dice que al cambiar la categoría de un socio se dan de baja sus inscripciones a actividades no habilitadas para la nueva categoría.
-
-Implementado:
-- `INSCRIPCION` tiene `estado` (`'Activa'` / `'Baja'`, default `'Activa'`) y `fecha_baja`, con `CK_INSCRIPCION_ESTADO` y `CK_INSCRIPCION_FECHA_BAJA`.
-- La PK de `INSCRIPCION` pasó a `(nro_socio_base, nro_orden, cod_actividad, fecha_inscripcion)`, para que un socio dado de baja pueda reinscribirse en la misma actividad (H6). La FK y la PK de `CUOTA_ARANCEL` incluyen ahora `fecha_inscripcion`.
-- `TR_INSCRIPCION_VIGENTE_UNICA` (50014): a lo sumo una inscripción `Activa` por socio y actividad (H6). Es un trigger y no un índice único filtrado porque `sqlcmd` corre con `QUOTED_IDENTIFIER OFF`.
-- `TR_SOCIO_CAMBIO_CATEGORIA` (sobre `SOCIO`): al cambiar `nombre_categoria` pasa a `Baja` las inscripciones activas no habilitadas para la nueva categoría y conserva las compatibles. `fecha_baja` es la fecha actual (o la de inscripción si es posterior).
-- `TR_INSCRIPCION_CATEGORIA_HABILITADA` valida sólo las inscripciones `Activa`, para que la baja no se rechace a sí misma.
-- `SP_LIQUIDAR_CUOTA_ARANCEL` deja de generar cuotas para las inscripciones dadas de baja (sólo las vencidas hasta la `fecha_baja`); las ya generadas se mantienen.
-- Pruebas O, P1 y P2 en `05`.
-
-Supuestos a confirmar con el grupo:
-- Una inscripción dada de baja deja de generar cuotas de arancel.
-- Las inscripciones dadas de baja siguen contando en la consulta 2.
-- Reinscribirse crea una fila nueva (otra `fecha_inscripcion`); no se reactiva la fila de baja. Como la fecha es parte de la PK, no se puede reinscribir el mismo día de una inscripción anterior en esa actividad (error 2627).
-
-- [x] Decidir agregar estado / fecha de baja a `INSCRIPCION` (cambio de modelo).
-- [x] Decidir el efecto sobre la PK y la reinscripción (H6): la PK suma `fecha_inscripcion`.
-- [x] Implementar el trigger sobre `SOCIO` y ajustar `SP_INSCRIBIR_ACTIVIDAD`, `SP_LIQUIDAR_CUOTA_ARANCEL` y la consulta 2.
-- [x] Agregar pruebas (cambio de categoría con inscripciones compatibles e incompatibles, reinscripción, doble inscripción activa).
-- [ ] Confirmar los supuestos con el grupo y reflejar el cambio en §4.1 de la resolución (TODO 12).
 
 ## TODO 8: Criterio de "todas las gratuitas" sin actividades gratuitas
 
@@ -182,6 +156,37 @@ Opciones para las cuatro primeras filas:
 - [x] `AREA.capacidad` con `CHECK (capacidad >= 0)`.
 - [x] `AREA.cod_area` `VARCHAR(20)`; `CK_AREA_COD_AREA` exige no vacío y sin espacios al inicio ni al final.
 - [x] FK de `cod_area` (`APTA_PARA`, `SE_DESARROLLA_EN`) y datos de prueba ajustados a texto.
+
+## TODO 5: Baja de inscripciones al cambiar de categoría (H12)
+
+**Estado:** CERRADO por decisión del usuario: se deja como está implementado (baja automática con historial). Es una hipótesis propia del grupo (H12), no un requisito del enunciado.
+
+Fundamento:
+- El enunciado sólo exige verificar la categoría **al inscribirse** ("siendo necesario verificar que la categoría del socio coincida con la categoría asociada a la actividad en la que se inscribe"). No dice nada sobre cambios de categoría ni sobre bajas.
+- H6 y H9 hablan de inscripción "vigente": hace falta algún modo de terminar una inscripción, si no las cuotas de arancel se generarían para siempre.
+- No se pueden borrar las filas: `CUOTA_ARANCEL` tiene FK hacia `INSCRIPCION` y la consulta 2 necesita el historial de inscripciones del año pasado.
+- Texto propuesto para H12: *"El enunciado verifica la categoría sólo al inscribir; asumimos además que al cambiar la categoría de un socio se dan de baja sus inscripciones incompatibles con la nueva categoría, conservando el historial."*
+
+Implementado:
+- `INSCRIPCION` tiene `estado` (`'Activa'` / `'Baja'`, default `'Activa'`) y `fecha_baja`, con `CK_INSCRIPCION_ESTADO` y `CK_INSCRIPCION_FECHA_BAJA`.
+- La PK de `INSCRIPCION` pasó a `(nro_socio_base, nro_orden, cod_actividad, fecha_inscripcion)`, para que un socio dado de baja pueda reinscribirse en la misma actividad (H6). La FK y la PK de `CUOTA_ARANCEL` incluyen ahora `fecha_inscripcion`.
+- `TR_INSCRIPCION_VIGENTE_UNICA` (50014): a lo sumo una inscripción `Activa` por socio y actividad (H6). Es un trigger y no un índice único filtrado porque `sqlcmd` corre con `QUOTED_IDENTIFIER OFF`.
+- `TR_SOCIO_CAMBIO_CATEGORIA` (sobre `SOCIO`): al cambiar `nombre_categoria` pasa a `Baja` las inscripciones activas no habilitadas para la nueva categoría y conserva las compatibles. `fecha_baja` es la fecha actual (o la de inscripción si es posterior).
+- `TR_INSCRIPCION_CATEGORIA_HABILITADA` valida sólo las inscripciones `Activa`, para que la baja no se rechace a sí misma.
+- `SP_LIQUIDAR_CUOTA_ARANCEL` deja de generar cuotas para las inscripciones dadas de baja (sólo las vencidas hasta la `fecha_baja`); las ya generadas se mantienen.
+- Pruebas O, P1 y P2 en `05`.
+
+Criterios adoptados:
+- Una inscripción dada de baja deja de generar cuotas de arancel; las ya generadas se mantienen.
+- Las inscripciones dadas de baja siguen contando en la consulta 2 (el socio estuvo inscripto ese año).
+- Reinscribirse crea una fila nueva (otra `fecha_inscripcion`); no se reactiva la fila de baja. Como la fecha es parte de la PK, no se puede reinscribir el mismo día de una inscripción anterior en esa actividad (error 2627).
+
+- [x] Decidir agregar estado / fecha de baja a `INSCRIPCION` (cambio de modelo).
+- [x] Decidir el efecto sobre la PK y la reinscripción (H6): la PK suma `fecha_inscripcion`.
+- [x] Implementar el trigger sobre `SOCIO` y ajustar `SP_INSCRIBIR_ACTIVIDAD`, `SP_LIQUIDAR_CUOTA_ARANCEL` y la consulta 2.
+- [x] Agregar pruebas (cambio de categoría con inscripciones compatibles e incompatibles, reinscripción, doble inscripción activa).
+- [x] Cerrar la decisión: se deja como está.
+- [ ] Reflejar el cambio en §4.1 de la resolución y redactar H12 con el texto propuesto (TODO 12).
 
 ## TODO 6: Categorías y `nro_orden`
 

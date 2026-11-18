@@ -145,7 +145,6 @@ Detalle en [pendientes_diseno.md](pendientes_diseno.md). No implementar ni asumi
 
 - TODO 3 (aplicado, a confirmar): la lista de estados de `ESTADO_AREA` (`Operativa`, `En mantenimiento`, `Fuera de servicio`) es una propuesta; agregar o quitar un estado es una fila de `02`. Falta confirmar que el historial es lo que el grupo quiere y la lista de estados.
 - TODO 8: confirmar que "año pasado" es el año de `fecha_inscripcion` (`YEAR(GETDATE()) - 1`). El caso vacío ya está decidido: la consulta 2 no devuelve filas.
-- Supuestos del TODO 5 a confirmar: la baja corta las cuotas de arancel, las bajas cuentan en la consulta 2 y reinscribirse crea una fila nueva.
 - TODO 12: correcciones a la resolución entregada (§3.2, §4.1 con las dos tablas del historial, §5.1.1, §5.1.15 y H9 vs §4.2 l.219).
 
 ### 4.2 Restricciones del modelo sin garantizar
@@ -184,7 +183,7 @@ Todas en [pendientes_diseno.md](pendientes_diseno.md).
 | 2 | Jerarquía de `ACTIVIDAD` | Aplicado (triggers y SP de alta). Totalidad sólo vía SP. |
 | 3 | Estado de mantenimiento de las áreas | Aplicado como historial (`ESTADO_AREA` + `HISTORIAL_AREA_ESTADO`). Lista de estados a confirmar con el grupo. |
 | 4 | Tipos de `PROFESIONAL.dni` y `AREA.cod_area` | Aplicado: `dni` `INT` con `dni > 0`; `cod_area` `VARCHAR(20)` con CHECK de formato. |
-| 5 | Baja de inscripciones al cambiar categoría (H12) | Aplicado: `estado` y `fecha_baja` en `INSCRIPCION`, PK con `fecha_inscripcion`. Supuestos a confirmar. |
+| 5 | Baja de inscripciones al cambiar categoría (H12) | Cerrado: `estado` y `fecha_baja` en `INSCRIPCION`, PK con `fecha_inscripcion`; la baja es automática y conserva el historial. |
 | 6 | Categorías y `nro_orden` | Aplicado: `infantiles/mayores/vitalicios` y titular en 0. |
 | 7 | Vencimiento de la cuota social | Cerrado: último día del mes. |
 | 8 | "Todas las gratuitas" sin actividades y "año pasado" | Parcial: el caso vacío no devuelve filas (decidido); falta confirmar "año pasado". |
@@ -209,7 +208,7 @@ Todas en [pendientes_diseno.md](pendientes_diseno.md).
 
 ## 7. Próximos pasos sugeridos
 
-1. Llevar al grupo la consulta de [consulta_decisiones_abiertas.md](consulta_decisiones_abiertas.md) (TODO 3 con el historial, TODO 8 y 9, los supuestos del TODO 5 y el TODO 12).
+1. Llevar al grupo la consulta de [consulta_decisiones_abiertas.md](consulta_decisiones_abiertas.md) (TODO 3 con el historial, TODO 8 y 9) y el TODO 12, que incluye redactar H12 y reflejar el TODO 5 en §4.1.
 2. Con las respuestas, ajustar la lista de `ESTADO_AREA` (TODO 3) y, si cambia, el criterio de "año pasado" de la consulta 2 (TODO 8).
 3. Completar los entregables a–d (§4.4). Conviene empezar por d (restricciones adicionales) y b (supuestos), que se pueden redactar con lo ya implementado.
 4. Resolver con el grupo las inconsistencias de TP_BBDD_Grupo_4.md (TODO 12) antes de entregar.
