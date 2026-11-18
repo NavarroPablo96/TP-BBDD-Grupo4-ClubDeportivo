@@ -1,7 +1,8 @@
 USE ClubDeportivo;
 GO
 
--- Triggers de profesionales y áreas de los dictados, y SP y vista del historial de estados de las áreas.
+-- Triggers de profesionales y áreas de los dictados, SP y vistas del historial de estados de las áreas
+-- y regla del estado operativo (un dictado sólo en un área operativa durante todo su período).
 -- Se pueden volver a crear con CREATE OR ALTER.
 -- Se ejecuta después de 03 y antes de 05, porque los datos de prueba de 05 verifican su rechazo.
 
@@ -145,4 +146,82 @@ LEFT JOIN (
 ) h
     ON h.cod_area = a.cod_area
    AND h.posicion = 1;
+GO
+
+
+-- Regla del estado operativo (hipótesis del grupo, no está en el enunciado; pendientes_diseno.md TODO 13):
+-- un dictado sólo puede desarrollarse en un área que esté 'Operativa' durante todo su período.
+-- Un área sin historial de estados (cargada con un INSERT directo en AREA) no se restringe.
+
+-- VW_AREA_ESTADO_PERIODO
+-- Intervalos de vigencia de cada estado: desde su fecha_desde hasta el día anterior al siguiente estado.
+-- El último estado queda abierto (hasta 9999-12-31).
+CREATE OR ALTER VIEW VW_AREA_ESTADO_PERIODO
+AS
+SELECT cod_area,
+       nombre_estado,
+       fecha_desde AS desde,
+       ISNULL(DATEADD(DAY, -1, LEAD(fecha_desde) OVER (PARTITION BY cod_area ORDER BY fecha_desde)),
+              CAST('9999-12-31' AS DATE)) AS hasta
+FROM HISTORIAL_AREA_ESTADO;
+GO
+
+
+-- VW_CONFLICTOS_ESTADO_DICTADO
+-- Pares (dictado, área) en los que el área está en un estado distinto de 'Operativa' en algún momento del
+-- período del dictado. Los triggers TR_DICTADO_AREA_OPERATIVA_* consultan esta vista.
+CREATE OR ALTER VIEW VW_CONFLICTOS_ESTADO_DICTADO
+AS
+SELECT d.cod_dictado,
+       s.cod_area,
+       p.nombre_estado,
+       p.desde,
+       p.hasta
+FROM DICTADO d
+INNER JOIN SE_DESARROLLA_EN s
+    ON s.cod_dictado = d.cod_dictado
+INNER JOIN VW_AREA_ESTADO_PERIODO p
+    ON p.cod_area = s.cod_area
+WHERE p.nombre_estado <> 'Operativa'
+  AND p.desde <= d.fecha_fin
+  AND d.fecha_desde <= p.hasta;
+GO
+
+
+-- TR_DICTADO_AREA_OPERATIVA_* (una por tabla que puede crear el conflicto)
+-- Al asignar un área a un dictado, al cambiar las fechas de un dictado y al cambiar el historial de estados.
+CREATE OR ALTER TRIGGER TR_DICTADO_AREA_OPERATIVA_SE_DESARROLLA_EN
+ON SE_DESARROLLA_EN
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF (SELECT COUNT(*) FROM VW_CONFLICTOS_ESTADO_DICTADO) > 0
+        THROW 50015, 'El área no está operativa durante todo el período del dictado.', 1;
+END;
+GO
+
+CREATE OR ALTER TRIGGER TR_DICTADO_AREA_OPERATIVA_DICTADO
+ON DICTADO
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF (SELECT COUNT(*) FROM VW_CONFLICTOS_ESTADO_DICTADO) > 0
+        THROW 50015, 'El área no está operativa durante todo el período del dictado.', 1;
+END;
+GO
+
+CREATE OR ALTER TRIGGER TR_DICTADO_AREA_OPERATIVA_HISTORIAL
+ON HISTORIAL_AREA_ESTADO
+AFTER INSERT, UPDATE, DELETE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF (SELECT COUNT(*) FROM VW_CONFLICTOS_ESTADO_DICTADO) > 0
+        THROW 50015, 'El cambio de estado deja al área sin operar durante el período de un dictado que se desarrolla en ella.', 1;
+END;
 GO

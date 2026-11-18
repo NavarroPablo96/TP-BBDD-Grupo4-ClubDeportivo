@@ -4,7 +4,7 @@ Aplicación web (Next.js) para operar la base `ClubDeportivo` y **activar a mano
 
 ## 1. Principio de diseño
 
-**La app no valida.** Ningún formulario controla tipos, rangos, obligatoriedad ni reglas de negocio. Todo valor viaja a la base (el campo vacío viaja como `NULL`) y la base responde. Así se pueden probar los rechazos de `03` y `04` (errores 50001 a 50014, `CK_*` error 547, FK, PK duplicada, conversiones).
+**La app no valida.** Ningún formulario controla tipos, rangos, obligatoriedad ni reglas de negocio. Todo valor viaja a la base (el campo vacío viaja como `NULL`) y la base responde. Así se pueden probar los rechazos de `03` y `04` (errores 50001 a 50015, `CK_*` error 547, FK, PK duplicada, conversiones).
 
 Consecuencias de diseño:
 
@@ -21,7 +21,7 @@ Consecuencias de diseño:
 | F3 | Alta directa (`INSERT`) | `/tablas/[tabla]` | Formulario generado desde los metadatos; omite columnas `IDENTITY`. Dispara triggers de tabla y constraints. |
 | F4 | Edición (`UPDATE`) | `/tablas/[tabla]` | Carga la fila en el formulario; la clave original viaja aparte, por lo que se puede cambiar la PK. Dispara, por ejemplo, `TR_SOCIO_CAMBIO_CATEGORIA`. |
 | F5 | Baja (`DELETE`) | `/tablas/[tabla]` | Con confirmación del navegador. Dispara `TR_SOCIO_BAJA_GRUPO` y las FK. |
-| F6 | Consultas y vistas | `/consultas` | `VW_TITULARES_DEUDA_ANIO_ACTUAL`, `VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR`, `VW_ESTADO_ACTUAL_AREA` y `VW_CONFLICTOS_DICTADO`. Muestra "sin filas" cuando la vista no devuelve nada (decisión TODO 8). |
+| F6 | Consultas y vistas | `/consultas` | `VW_TITULARES_DEUDA_ANIO_ACTUAL`, `VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR`, `VW_ESTADO_ACTUAL_AREA`, `VW_AREA_ESTADO_PERIODO`, `VW_CONFLICTOS_ESTADO_DICTADO` y `VW_CONFLICTOS_DICTADO`. Muestra "sin filas" cuando la vista no devuelve nada (decisión TODO 8). |
 | F7 | Stored procedures | `/procedimientos` | Un formulario por SP: `SP_ALTA_GRUPO_FAMILIAR`, `SP_ALTA_ACTIVIDAD_ARANCELADA`, `SP_ALTA_ACTIVIDAD_GRATUITA`, `SP_ALTA_DICTADO`, `SP_ALTA_AREA`, `SP_CAMBIAR_ESTADO_AREA` (historial de estados de un área; la fecha es opcional y por defecto rige la actual), `SP_INSCRIBIR_ACTIVIDAD`, `SP_LIQUIDAR_CUOTA_SOCIAL`, `SP_LIQUIDAR_CUOTA_ARANCEL`. Muestra parámetros `OUTPUT` (`nro_socio_base`, `cod_dictado`), result sets y mensajes `PRINT`. |
 | F9 | Consola SQL libre | `/sql` | Ejecuta T-SQL arbitrario, con lotes separados por `GO` (corta en el primer error y dice qué lote falló). Muestra result sets, mensajes `PRINT` y filas afectadas. Por defecto corre en una transacción que **siempre se deshace** (ROLLBACK), para probar triggers y constraints sin ensuciar los datos; desmarcando la opción los cambios persisten (con confirmación). Ctrl+Enter ejecuta. |
 | F10 | Sugerencias (`datalist`) | tablas y `/procedimientos` | Los campos de dominio cerrado (CHECK) y de clave foránea ofrecen los valores válidos, con etiqueta descriptiva (ej.: `nro_socio_base` → `1 = Juan Perez`), pero aceptan cualquier valor. Ver §5. |
@@ -91,7 +91,7 @@ Relevamiento hecho sobre `scripts/01_creacion_tablas.sql` (FK y CHECK) y las fir
 
 ### 5.4 Descartados o a esperar
 
-- `AREA.estado_mantenimiento` ya no existe: el estado es un historial (`HISTORIAL_AREA_ESTADO`). `nombre_estado` ofrece como sugerencias los valores del catálogo `ESTADO_AREA` (FK) y `cod_area` las áreas existentes. La lista de estados está pendiente de confirmar con el grupo (TODO 3).
+- `AREA.estado_mantenimiento` ya no existe: el estado es un historial (`HISTORIAL_AREA_ESTADO`). `nombre_estado` ofrece como sugerencias los valores del catálogo `ESTADO_AREA` (FK) y `cod_area` las áreas existentes. La lista de estados (`Operativa`, `En mantenimiento`, `Fuera de servicio`) está confirmada (TODO 3).
 - `SOCIO.nro_orden`: no es FK; es correlativo dentro del grupo (0 = titular). Se podría sugerir el próximo libre, pero es lógica de negocio.
 - `cod_actividad` y `cod_area` en los altas de `ACTIVIDAD` y `AREA`, y `dni` de `PROFESIONAL`: son claves nuevas, no existen en ningún padre.
 - Fechas y horas: ya implementado con `<input type="date">` / `type="time"` (calendario y selector de hora nativos) en los formularios de tablas y de SP. Limitación: el navegador no deja enviar una fecha inválida (ej.: 31/02) ni texto libre en esos campos; para probar fechas mal formadas usar la consola SQL.

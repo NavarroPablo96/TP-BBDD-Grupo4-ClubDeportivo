@@ -142,6 +142,16 @@ export const VIEWS: { name: string; title: string; description: string }[] = [
     description: "Estado vigente de cada área según su historial (el de mayor fecha que no sea futura). Un área sin historial figura con estado NULL.",
   },
   {
+    name: "VW_AREA_ESTADO_PERIODO",
+    title: "Períodos de estado de las áreas",
+    description: "Intervalo de vigencia de cada estado de cada área: desde su fecha hasta el día anterior al siguiente estado (el último queda abierto).",
+  },
+  {
+    name: "VW_CONFLICTOS_ESTADO_DICTADO",
+    title: "Conflictos de estado de área en dictados",
+    description: "Dictados cuya área no está operativa durante todo su período (regla del estado operativo, error 50015).",
+  },
+  {
     name: "VW_CONFLICTOS_DICTADO",
     title: "Conflictos de dictados",
     description: "Pares de dictados que coinciden en día, horario y período con un área o profesional en común.",
