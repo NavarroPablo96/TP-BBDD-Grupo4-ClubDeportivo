@@ -106,7 +106,14 @@ Historial de estados de las áreas (TODO 3):
 - `SP_CAMBIAR_ESTADO_AREA (@cod_area, @nombre_estado, @fecha_desde = NULL)`: registra un nuevo estado desde una fecha. Rechaza (PK) un segundo estado en la misma fecha y (FK) un estado que no está en el catálogo.
 - `VW_ESTADO_ACTUAL_AREA`: estado vigente de cada área, el de mayor `fecha_desde` que no sea futura. Un área sin historial figura con estado `NULL`.
 
-Los códigos de error son únicos en todo `03` y `04` (50001 a 50014, con 50004 usado por `SP_LIQUIDAR_CUOTA_SOCIAL`).
+Regla del estado operativo (TODO 13): un dictado sólo puede desarrollarse en un área que esté `Operativa` durante todo su período.
+
+- `VW_AREA_ESTADO_PERIODO`: intervalo de vigencia de cada estado (hasta el día anterior al siguiente; el último queda abierto).
+- `VW_CONFLICTOS_ESTADO_DICTADO`: pares (dictado, área) cuyo período se solapa con un estado distinto de `Operativa`.
+- `TR_DICTADO_AREA_OPERATIVA_SE_DESARROLLA_EN`, `TR_DICTADO_AREA_OPERATIVA_DICTADO` y `TR_DICTADO_AREA_OPERATIVA_HISTORIAL` (sobre `SE_DESARROLLA_EN`, `DICTADO` y `HISTORIAL_AREA_ESTADO`): rechazan con error 50015 al asignar el área, al cambiar las fechas del dictado y al cambiar el historial de estados.
+- Un área puede crearse con cualquier estado. Un área sin historial no se restringe. Es una hipótesis del grupo, decidida como definitiva.
+
+Los códigos de error son únicos en todo `03` y `04` (50001 a 50015, con 50004 usado por `SP_LIQUIDAR_CUOTA_SOCIAL`).
 
 ### 3.4 Datos de prueba
 
@@ -133,6 +140,7 @@ Resultados esperados con estos datos:
   - R: `SP_ALTA_DICTADO` con un área no apta rechaza 50006 y no deja filas.
   - S: sin actividades gratuitas, `VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR` no devuelve filas.
   - T–X (historial de estados de áreas): dos estados en la misma fecha rechazan por la PK (2627); un estado fuera del catálogo rechaza por la FK (547) y no deja filas (U); un área vuelve a un estado anterior y un estado con fecha futura no es el vigente (V); `SP_ALTA_AREA` con estado inválido rechaza y no deja el área (W); estados vigentes de los datos de prueba (X).
+  - Y1, Y2 y Z (regla del estado operativo): asignar un área en mantenimiento durante todo el período rechaza 50015 (Y1); pasar el área a mantenimiento a mitad de un dictado rechaza 50015 (Y2); un mantenimiento que termina antes del dictado no lo bloquea (Z).
 - Liquidar dos veces el mismo mes no duplica cuotas. Los montos calculados coinciden con los esperados.
 - El alta de un titular infantil no deja filas en `GRUPO_FAMILIAR` (rollback del SP).
 - Re-correr `02` sobre una base cargada falla por diseño (`FK_SOCIO_GRUPO_FAMILIAR`): la `IDENTITY` de `GRUPO_FAMILIAR` no se reinicia. Re-correr `05` sobre datos cargados falla por claves duplicadas.
@@ -143,9 +151,8 @@ Resultados esperados con estos datos:
 
 Detalle en [pendientes_diseno.md](pendientes_diseno.md). No implementar ni asumir sin el equipo.
 
-- TODO 3 (aplicado, a confirmar): la lista de estados de `ESTADO_AREA` (`Operativa`, `En mantenimiento`, `Fuera de servicio`) es una propuesta; agregar o quitar un estado es una fila de `02`. Falta confirmar que el historial es lo que el grupo quiere y la lista de estados.
 - TODO 8: confirmar que "año pasado" es el año de `fecha_inscripcion` (`YEAR(GETDATE()) - 1`). El caso vacío ya está decidido: la consulta 2 no devuelve filas.
-- TODO 12: correcciones a la resolución entregada (§3.2, §4.1 con las dos tablas del historial, §5.1.1, §5.1.15 y H9 vs §4.2 l.219).
+- TODO 12: correcciones a la resolución entregada (§3.2, §4.1 con las dos tablas del historial, §4.2 y H15 con la regla del TODO 13, §5.1.1, §5.1.15 y H9 vs §4.2 l.219).
 
 ### 4.2 Restricciones del modelo sin garantizar
 
@@ -160,7 +167,7 @@ Enunciado (funcionalidad e): aplicación sencilla en un lenguaje host que acceda
 
 Hay un MVP en `app-host/` (Next.js, TypeScript): lista, inserta, edita y borra filas de las 21 tablas, muestra las cuatro vistas, ejecuta los SP de `03` y `04` (incluido el alta de áreas y el cambio de estado) y tiene una consola SQL. Features, backlog y limitaciones en [APP_HOST_FEATURES.md](APP_HOST_FEATURES.md); cómo correrla en `app-host/README.md` y en CLAUDE.md §8.
 
-- **No valida a propósito:** todo valor viaja a la base y los triggers, constraints y SP son los que rechazan; los errores de SQL Server se muestran tal cual. Sirve para probar los rechazos 50001 a 50014 y los `CK_*`.
+- **No valida a propósito:** todo valor viaja a la base y los triggers, constraints y SP son los que rechazan; los errores de SQL Server se muestran tal cual. Sirve para probar los rechazos 50001 a 50015 y los `CK_*`.
 - **La lógica de negocio vive en la base:** un cambio de comportamiento se hace en `scripts/`, no en la app. Si cambia la firma de un SP, hay que actualizarla a mano en `app-host/lib/procedures.ts`.
 - **Requiere** la base creada con `00` a `05`, Node 20+, LocalDB y el ODBC Driver 17/18 para SQL Server (sólo Windows).
 - **Pendiente:** decidir qué operación con transacciones se muestra en la entrega (los SP de alta y de inscripción corren en una transacción) y el backlog opcional de la app.
@@ -181,7 +188,7 @@ Todas en [pendientes_diseno.md](pendientes_diseno.md).
 |---|---|---|
 | 1 | Periodicidades de `meses_por_cuota` | Cerrado: `IN (1, 2, 3, 6, 12)`. |
 | 2 | Jerarquía de `ACTIVIDAD` | Aplicado (triggers y SP de alta). Totalidad sólo vía SP. |
-| 3 | Estado de mantenimiento de las áreas | Aplicado como historial (`ESTADO_AREA` + `HISTORIAL_AREA_ESTADO`). Lista de estados a confirmar con el grupo. |
+| 3 | Estado de mantenimiento de las áreas | Cerrado: historial (`ESTADO_AREA` + `HISTORIAL_AREA_ESTADO`) con la lista de estados confirmada. |
 | 4 | Tipos de `PROFESIONAL.dni` y `AREA.cod_area` | Aplicado: `dni` `INT` con `dni > 0`; `cod_area` `VARCHAR(20)` con CHECK de formato. |
 | 5 | Baja de inscripciones al cambiar categoría (H12) | Cerrado: `estado` y `fecha_baja` en `INSCRIPCION`, PK con `fecha_inscripcion`; la baja es automática y conserva el historial. |
 | 6 | Categorías y `nro_orden` | Aplicado: `infantiles/mayores/vitalicios` y titular en 0. |
@@ -191,6 +198,7 @@ Todas en [pendientes_diseno.md](pendientes_diseno.md).
 | 10 | Participaciones totales sin garantizar | Parcial: `DICTADO` → área por SP; el resto, limitación documentada. |
 | 11 | Restricciones de cuotas que sólo cubren los SP | Aplicado: puesta al día en `SP_LIQUIDAR_CUOTA_ARANCEL`; el resto, limitación documentada. |
 | 12 | Inconsistencias en TP_BBDD_Grupo_4.md (§3.2, §5.1.1, §5.1.15, §4.1) | **Abierto**; requiere OK del grupo. |
+| 13 | Un dictado sólo en un área operativa durante todo su período | Cerrado (definitivo). |
 
 ## 6. Problemas conocidos
 
@@ -208,8 +216,8 @@ Todas en [pendientes_diseno.md](pendientes_diseno.md).
 
 ## 7. Próximos pasos sugeridos
 
-1. Llevar al grupo la consulta de [consulta_decisiones_abiertas.md](consulta_decisiones_abiertas.md) (TODO 3 con el historial, TODO 8 y 9) y el TODO 12, que incluye redactar H12 y reflejar el TODO 5 en §4.1.
-2. Con las respuestas, ajustar la lista de `ESTADO_AREA` (TODO 3) y, si cambia, el criterio de "año pasado" de la consulta 2 (TODO 8).
+1. Llevar al grupo la consulta de [consulta_decisiones_abiertas.md](consulta_decisiones_abiertas.md) (TODO 8 y 9) y el TODO 12, que incluye redactar H12 y H15 y reflejar los TODO 3, 5 y 13 en §4.1 y §4.2.
+2. Con las respuestas, ajustar, si cambia, el criterio de "año pasado" de la consulta 2 (TODO 8).
 3. Completar los entregables a–d (§4.4). Conviene empezar por d (restricciones adicionales) y b (supuestos), que se pueden redactar con lo ya implementado.
 4. Resolver con el grupo las inconsistencias de TP_BBDD_Grupo_4.md (TODO 12) antes de entregar.
 5. Elegir con el grupo la operación con transacciones que se muestra en la aplicación host (§4.3) y revisar el backlog opcional de [APP_HOST_FEATURES.md](APP_HOST_FEATURES.md).

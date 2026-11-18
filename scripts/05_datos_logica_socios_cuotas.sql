@@ -616,6 +616,80 @@ ELSE
     PRINT 'W: quedó el área sin estado (error)';
 GO
 
+-- Y1: área en mantenimiento durante todo el período del dictado -> rechaza 50015 al asignarla
+BEGIN TRY
+    BEGIN TRANSACTION;
+    DECLARE @anio_y1 INT = YEAR(GETDATE());
+    DECLARE @inicio_y1 DATE = DATEFROMPARTS(@anio_y1 - 1, 1, 1);
+    EXEC SP_ALTA_AREA @cod_area = 'AREA-95', @ubicacion = 'Sala', @capacidad = 10, @nombre_estado = 'En mantenimiento', @fecha_desde = @inicio_y1;
+    INSERT INTO APTA_PARA (cod_area, cod_actividad) VALUES ('AREA-95', 201);
+    INSERT INTO DICTADO (fecha_desde, fecha_fin, hora_inicio, hora_fin, cod_actividad)
+    VALUES (DATEFROMPARTS(@anio_y1, 7, 1), DATEFROMPARTS(@anio_y1, 9, 30), '17:00', '18:00', 201);
+    DECLARE @d_y1 INT = SCOPE_IDENTITY();
+    INSERT INTO DICTADO_DIA (cod_dictado, dia_semana) VALUES (@d_y1, 5);
+    INSERT INTO A_CARGO_DE (cod_dictado, dni) VALUES (@d_y1, 30111222);
+    INSERT INTO SE_DESARROLLA_EN (cod_dictado, cod_area) VALUES (@d_y1, 'AREA-95');
+    PRINT 'Y1: NO RECHAZADO (error)';
+    ROLLBACK;
+END TRY
+BEGIN CATCH
+    PRINT 'Y1: rechazo ' + CAST(ERROR_NUMBER() AS VARCHAR(10)) + ' ' + ERROR_MESSAGE();
+    IF XACT_STATE() <> 0 ROLLBACK;
+END CATCH;
+GO
+
+-- Y2: el área pasa a mantenimiento a mitad del período de un dictado que se desarrolla en ella -> rechaza 50015
+BEGIN TRY
+    BEGIN TRANSACTION;
+    DECLARE @anio_y2 INT = YEAR(GETDATE());
+    DECLARE @inicio_y2 DATE = DATEFROMPARTS(@anio_y2 - 1, 1, 1);
+    EXEC SP_ALTA_AREA @cod_area = 'AREA-95', @ubicacion = 'Sala', @capacidad = 10, @nombre_estado = 'Operativa', @fecha_desde = @inicio_y2;
+    INSERT INTO APTA_PARA (cod_area, cod_actividad) VALUES ('AREA-95', 201);
+    INSERT INTO DICTADO (fecha_desde, fecha_fin, hora_inicio, hora_fin, cod_actividad)
+    VALUES (DATEFROMPARTS(@anio_y2, 7, 1), DATEFROMPARTS(@anio_y2, 9, 30), '17:00', '18:00', 201);
+    DECLARE @d_y2 INT = SCOPE_IDENTITY();
+    INSERT INTO DICTADO_DIA (cod_dictado, dia_semana) VALUES (@d_y2, 5);
+    INSERT INTO A_CARGO_DE (cod_dictado, dni) VALUES (@d_y2, 30111222);
+    INSERT INTO SE_DESARROLLA_EN (cod_dictado, cod_area) VALUES (@d_y2, 'AREA-95');
+    INSERT INTO HISTORIAL_AREA_ESTADO (cod_area, fecha_desde, nombre_estado)
+    VALUES ('AREA-95', DATEFROMPARTS(@anio_y2, 8, 1), 'En mantenimiento');
+    PRINT 'Y2: NO RECHAZADO (error)';
+    ROLLBACK;
+END TRY
+BEGIN CATCH
+    PRINT 'Y2: rechazo ' + CAST(ERROR_NUMBER() AS VARCHAR(10)) + ' ' + ERROR_MESSAGE();
+    IF XACT_STATE() <> 0 ROLLBACK;
+END CATCH;
+GO
+
+-- Z (control): un estado no operativo que termina antes del período del dictado no lo bloquea
+BEGIN TRY
+    BEGIN TRANSACTION;
+    DECLARE @anio_z INT = YEAR(GETDATE());
+    DECLARE @inicio_z DATE = DATEFROMPARTS(@anio_z - 1, 1, 1);
+    EXEC SP_ALTA_AREA @cod_area = 'AREA-95', @ubicacion = 'Sala', @capacidad = 10, @nombre_estado = 'Operativa', @fecha_desde = @inicio_z;
+    INSERT INTO HISTORIAL_AREA_ESTADO (cod_area, fecha_desde, nombre_estado)
+    VALUES ('AREA-95', DATEFROMPARTS(@anio_z, 3, 1), 'En mantenimiento'),
+           ('AREA-95', DATEFROMPARTS(@anio_z, 5, 1), 'Operativa');
+    INSERT INTO APTA_PARA (cod_area, cod_actividad) VALUES ('AREA-95', 201);
+    INSERT INTO DICTADO (fecha_desde, fecha_fin, hora_inicio, hora_fin, cod_actividad)
+    VALUES (DATEFROMPARTS(@anio_z, 7, 1), DATEFROMPARTS(@anio_z, 9, 30), '17:00', '18:00', 201);
+    DECLARE @d_z INT = SCOPE_IDENTITY();
+    INSERT INTO DICTADO_DIA (cod_dictado, dia_semana) VALUES (@d_z, 5);
+    INSERT INTO A_CARGO_DE (cod_dictado, dni) VALUES (@d_z, 30111222);
+    INSERT INTO SE_DESARROLLA_EN (cod_dictado, cod_area) VALUES (@d_z, 'AREA-95');
+    IF (SELECT COUNT(*) FROM VW_CONFLICTOS_ESTADO_DICTADO) = 0
+        PRINT 'Z: control OK (el mantenimiento terminó antes del dictado)';
+    ELSE
+        PRINT 'Z: control FALLÓ';
+    ROLLBACK;
+END TRY
+BEGIN CATCH
+    PRINT 'Z: control FALLÓ ' + CAST(ERROR_NUMBER() AS VARCHAR(10)) + ' ' + ERROR_MESSAGE();
+    IF XACT_STATE() <> 0 ROLLBACK;
+END CATCH;
+GO
+
 -- X (control): estado vigente de los datos de prueba (AREA-01 Operativa, AREA-02 Fuera de servicio con 4 registros)
 IF (SELECT nombre_estado FROM VW_ESTADO_ACTUAL_AREA WHERE cod_area = 'AREA-01') = 'Operativa'
    AND (SELECT nombre_estado FROM VW_ESTADO_ACTUAL_AREA WHERE cod_area = 'AREA-02') = 'Fuera de servicio'

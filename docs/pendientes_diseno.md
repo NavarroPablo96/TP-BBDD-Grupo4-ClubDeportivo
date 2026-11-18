@@ -1,6 +1,6 @@
 # Pendientes de revisión del diseño
 
-Registro de decisiones de diseño: qué está abierto, qué se decidió y qué quedó aplicado en los scripts. El estado general del proyecto está en [SPEC_ESTADO.md](SPEC_ESTADO.md). La consulta redactada para el grupo (TODO 3, 8 y 9) está en [consulta_decisiones_abiertas.md](consulta_decisiones_abiertas.md).
+Registro de decisiones de diseño: qué está abierto, qué se decidió y qué quedó aplicado en los scripts. El estado general del proyecto está en [SPEC_ESTADO.md](SPEC_ESTADO.md). La consulta redactada para el grupo (TODO 8 y 9) está en [consulta_decisiones_abiertas.md](consulta_decisiones_abiertas.md).
 
 ## Resumen
 
@@ -8,7 +8,7 @@ Registro de decisiones de diseño: qué está abierto, qué se decidió y qué q
 |---|---|---|
 | 1 | Periodicidades de `meses_por_cuota` | Cerrado |
 | 2 | Jerarquía de `ACTIVIDAD` | Aplicado (con limitación) |
-| 3 | Estado de mantenimiento de las áreas (historial) | Aplicado como historial; lista de estados a confirmar con el grupo |
+| 3 | Estado de mantenimiento de las áreas (historial) | Cerrado: historial con la lista de estados confirmada |
 | 4 | Tipos de `PROFESIONAL.dni` y `AREA.cod_area` | Aplicado |
 | 5 | Baja de inscripciones al cambiar de categoría (H12) | Cerrado: se deja la baja automática con historial |
 | 6 | Categorías y `nro_orden` | Aplicado |
@@ -18,38 +18,13 @@ Registro de decisiones de diseño: qué está abierto, qué se decidió y qué q
 | 10 | Participaciones totales sin garantizar | Parcial: `DICTADO` → área por SP; el resto, limitación documentada |
 | 11 | Restricciones de cuotas que sólo cubren los SP | Aplicado: puesta al día en `SP_LIQUIDAR_CUOTA_ARANCEL`; el resto, limitación documentada |
 | 12 | Inconsistencias en TP_BBDD_Grupo_4.md | **Abierto** (requiere OK del grupo) |
+| 13 | Un dictado sólo en un área operativa durante todo su período | Cerrado (definitivo) |
 
-Los TODO 10 a 12 surgieron de comparar `TP_BBDD_Grupo_4.md` (§4.1 y §4.2) con los scripts. Los TODO 5, 10 y 11 se resolvieron con decisiones del usuario.
+Los TODO 10 a 12 surgieron de comparar `TP_BBDD_Grupo_4.md` (§4.1 y §4.2) con los scripts. Los TODO 3, 5, 10, 11 y 13 se resolvieron con decisiones del usuario.
 
 ---
 
 # Abiertos
-
-## TODO 3: Estado de mantenimiento de las áreas (historial)
-
-**Estado:** APLICADO por decisión del usuario como historial de estados; la lista de estados es una propuesta que el grupo todavía no confirmó. El enunciado no define los estados de mantenimiento ni si se guarda su historia, y no se admiten atributos multivaluados, así que el estado salió de `AREA` y pasó a dos tablas nuevas (cambia el modelo de TP_BBDD_Grupo_4.md §4.1; ver TODO 12).
-
-Modelo (DER del grupo: N:M entre `AREA` y `ESTADO_AREA`, con `fecha_desde` como clave de la relación):
-
-```
-ESTADO_AREA (nombre_estado)                                   PK = CK = {nombre_estado}
-HISTORIAL_AREA_ESTADO (cod_area, fecha_desde, nombre_estado)  PK = CK = {(cod_area, fecha_desde)}  FK = {cod_area, nombre_estado}
-```
-
-- `ESTADO_AREA` es el catálogo de estados posibles (`Operativa`, `En mantenimiento`, `Fuera de servicio`, cargados en `02`).
-- `HISTORIAL_AREA_ESTADO` registra desde qué fecha un área está en un estado. Un área puede volver a un estado anterior (otra `fecha_desde`).
-- Restricción adicional: **un área tiene un único estado por `fecha_desde`**. Una N:M con `fecha_desde` como clave no lo expresa (permitiría dos estados distintos en la misma fecha), así que la clave candidata real es `(cod_area, fecha_desde)` y `nombre_estado` depende de ella.
-- El estado vigente de un área es el de mayor `fecha_desde` que no sea futura: `VW_ESTADO_ACTUAL_AREA` (en `04`). Sin `fecha_hasta`, para evitar huecos y superposiciones entre períodos.
-- `SP_ALTA_AREA` crea el área y su primer estado en una transacción; `SP_CAMBIAR_ESTADO_AREA` agrega un nuevo estado (sin fecha rige la actual).
-- Participación total de `AREA` en `HISTORIAL_AREA_ESTADO` (§4.1): sólo la garantiza `SP_ALTA_AREA`; un `INSERT` directo en `AREA` la saltea y el área figura sin estado (limitación, ver TODO 10).
-- La app host ofrece los dos SP y la vista, y las tablas nuevas con sugerencias por FK.
-- Pruebas T–X en `05`.
-
-- [x] Decidir el modelo (catálogo + historial) y la PK `(cod_area, fecha_desde)`.
-- [x] Implementar tablas, catálogo, SP, vista, datos de prueba y pruebas.
-- [x] Adaptar la app host.
-- [ ] Confirmar con el grupo la lista de estados y que el historial es lo deseado (cada estado extra es una fila de `ESTADO_AREA` en `02`).
-- [ ] Reflejar las dos tablas nuevas y la restricción de la fecha en §4.1 y §4.2 de la resolución, y su normalización en §5 (TODO 12).
 
 ## TODO 8: Criterio de "todas las gratuitas" sin actividades gratuitas
 
@@ -123,6 +98,7 @@ Opciones para las cuatro primeras filas:
   - `CUOTA_ARANCEL` suma `fecha_inscripcion` a su PK y a la FK hacia `INSCRIPCION`.
   - `AREA` pierde `estado_mantenimiento` y se agregan `ESTADO_AREA (nombre_estado)` y `HISTORIAL_AREA_ESTADO (cod_area, fecha_desde, nombre_estado)` con PK `(cod_area, fecha_desde)` (TODO 3). El modelo pasa a 21 tablas.
   - Hay que agregar a §4.2 la restricción "un área tiene un único estado por `fecha_desde`" y a §5 el análisis de normalización de las dos tablas nuevas.
+  - Hay que agregar a §4.2 (y como H15) la regla del TODO 13: *"Un dictado sólo puede desarrollarse en un área que esté en estado `Operativa` durante todo su período; un área sin estado registrado no se restringe."*
 - **H9 contradice §4.2 l.219**: H9 dice que la primera cuota vence en la fecha de inscripción; §4.2 dice que la cuota k vence a los k × `meses_por_cuota` meses. Los scripts siguen H9.
 - **Las consultas 1 y 2 son vistas** (`VW_TITULARES_DEUDA_ANIO_ACTUAL` y `VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR`); la resolución no las define como SP ni como vistas.
 
@@ -147,6 +123,32 @@ Opciones para las cuatro primeras filas:
 - `TR_ACTIVIDAD_TIPO_INMUTABLE` (50013) impide cambiar `tipo` si ya tiene subentidad. Una actividad nunca cambia de gratuita a arancelada.
 - Totalidad: `SP_ALTA_ACTIVIDAD_ARANCELADA` y `SP_ALTA_ACTIVIDAD_GRATUITA` crean actividad y subentidad en una transacción.
 - Limitación vigente: borrar una subentidad, o un `INSERT` directo en `ACTIVIDAD`, puede dejar una actividad sin clasificar. No se agregó trigger de `DELETE` porque rompería la recarga de `02`. Ver TODO 10.
+
+## TODO 3: Estado de mantenimiento de las áreas (historial)
+
+**Estado:** CERRADO por decisión del usuario: historial de estados con la lista `Operativa`, `En mantenimiento`, `Fuera de servicio` confirmada. El enunciado no define los estados de mantenimiento ni si se guarda su historia, y no se admiten atributos multivaluados, así que el estado salió de `AREA` y pasó a dos tablas nuevas (cambia el modelo de TP_BBDD_Grupo_4.md §4.1; ver TODO 12).
+
+Modelo (DER del grupo: N:M entre `AREA` y `ESTADO_AREA`, con `fecha_desde` como clave de la relación):
+
+```
+ESTADO_AREA (nombre_estado)                                   PK = CK = {nombre_estado}
+HISTORIAL_AREA_ESTADO (cod_area, fecha_desde, nombre_estado)  PK = CK = {(cod_area, fecha_desde)}  FK = {cod_area, nombre_estado}
+```
+
+- `ESTADO_AREA` es el catálogo de estados posibles (`Operativa`, `En mantenimiento`, `Fuera de servicio`, cargados en `02`).
+- `HISTORIAL_AREA_ESTADO` registra desde qué fecha un área está en un estado. Un área puede volver a un estado anterior (otra `fecha_desde`).
+- Restricción adicional: **un área tiene un único estado por `fecha_desde`**. Una N:M con `fecha_desde` como clave no lo expresa (permitiría dos estados distintos en la misma fecha), así que la clave candidata real es `(cod_area, fecha_desde)` y `nombre_estado` depende de ella.
+- El estado vigente de un área es el de mayor `fecha_desde` que no sea futura: `VW_ESTADO_ACTUAL_AREA` (en `04`). Sin `fecha_hasta`, para evitar huecos y superposiciones entre períodos.
+- `SP_ALTA_AREA` crea el área y su primer estado en una transacción; `SP_CAMBIAR_ESTADO_AREA` agrega un nuevo estado (sin fecha rige la actual).
+- Participación total de `AREA` en `HISTORIAL_AREA_ESTADO` (§4.1): sólo la garantiza `SP_ALTA_AREA`; un `INSERT` directo en `AREA` la saltea y el área figura sin estado (limitación, ver TODO 10).
+- La app host ofrece los dos SP y la vista, y las tablas nuevas con sugerencias por FK.
+- Pruebas T–X en `05`.
+
+- [x] Decidir el modelo (catálogo + historial) y la PK `(cod_area, fecha_desde)`.
+- [x] Implementar tablas, catálogo, SP, vista, datos de prueba y pruebas.
+- [x] Adaptar la app host.
+- [x] Confirmar la lista de estados.
+- [ ] Reflejar las dos tablas nuevas y la restricción de la fecha en §4.1 y §4.2 de la resolución, y su normalización en §5 (TODO 12).
 
 ## TODO 4: Tipos de `PROFESIONAL` y `AREA`
 
@@ -187,6 +189,30 @@ Criterios adoptados:
 - [x] Agregar pruebas (cambio de categoría con inscripciones compatibles e incompatibles, reinscripción, doble inscripción activa).
 - [x] Cerrar la decisión: se deja como está.
 - [ ] Reflejar el cambio en §4.1 de la resolución y redactar H12 con el texto propuesto (TODO 12).
+
+## TODO 13: Un dictado sólo en un área operativa durante todo su período
+
+**Estado:** CERRADO por decisión del usuario (definitivo). Es una hipótesis propia del grupo: ni el enunciado ni §4.2 relacionan el estado de mantenimiento con los dictados.
+
+Regla: *un dictado no puede desarrollarse en un área que esté `En mantenimiento` o `Fuera de servicio` en algún momento de su período (`fecha_desde` a `fecha_fin`).*
+
+Implementado en `04_logica_areas_profesionales.sql`, con el mismo patrón que `TR_DICTADO_SOLAPAMIENTO_*`:
+- `VW_AREA_ESTADO_PERIODO`: intervalo de vigencia de cada estado (desde su `fecha_desde` hasta el día anterior al siguiente estado; el último queda abierto).
+- `VW_CONFLICTOS_ESTADO_DICTADO`: pares (dictado, área) cuyo período se solapa con un intervalo de estado distinto de `Operativa`.
+- `TR_DICTADO_AREA_OPERATIVA_SE_DESARROLLA_EN`, `TR_DICTADO_AREA_OPERATIVA_DICTADO` y `TR_DICTADO_AREA_OPERATIVA_HISTORIAL` (error 50015): al asignar el área, al cambiar las fechas del dictado y al cambiar el historial de estados (incluye `SP_CAMBIAR_ESTADO_AREA`).
+- Pruebas Y1, Y2 y Z en `05`.
+
+Criterios:
+- Un área puede crearse con cualquier estado (no se fuerza `Operativa`): si nace en mantenimiento, no recibe dictados hasta pasar a `Operativa`.
+- Un área sin historial (cargada con un `INSERT` directo en `AREA`) no se restringe: no hay estado conocido. Tampoco se restringe un dictado cuyo período empieza antes del primer estado registrado.
+- Un cambio de estado retroactivo que choque con un dictado ya cargado se rechaza.
+- El estado "operativo" es el nombre `'Operativa'` escrito en la vista, igual que `'infantiles'` en `TR_SOCIO_TITULAR_CATEGORIA`. Si se agregan estados que también permitan dictados, hay que tocar `VW_CONFLICTOS_ESTADO_DICTADO` (o agregar una columna a `ESTADO_AREA`, que cambia el modelo).
+- Los triggers revisan toda la vista, como los de solapamiento.
+
+- [x] Decidir la regla (período completo, sin forzar `Operativa` al crear).
+- [x] Implementar vistas, triggers y pruebas; mostrar las vistas en la app host.
+- [x] Confirmar la regla: definitiva.
+- [ ] Redactarla como H15 y agregarla a §4.2 de la resolución (TODO 12).
 
 ## TODO 6: Categorías y `nro_orden`
 
