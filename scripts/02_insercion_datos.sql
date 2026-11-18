@@ -20,7 +20,9 @@ DELETE FROM CUOTA_SOCIAL;
 DELETE FROM GRUPO_FAMILIAR;
 DELETE FROM VALOR_CUOTA_SOCIAL;
 DELETE FROM CATEGORIA;
+DELETE FROM HISTORIAL_AREA_ESTADO;
 DELETE FROM AREA;
+DELETE FROM ESTADO_AREA;
 DELETE FROM PROFESIONAL;
 GO
 
@@ -34,6 +36,15 @@ VALUES
     ('infantiles', -30.00),
     ('mayores', 0.00),
     ('vitalicios', -15.00);
+GO
+
+-- Estados de mantenimiento de un área. El enunciado no define la lista: propuesta pendiente de
+-- confirmar con el grupo (pendientes_diseno.md TODO 3). Agregar o quitar un estado es agregar o quitar una fila.
+INSERT INTO ESTADO_AREA (nombre_estado)
+VALUES
+    ('Operativa'),
+    ('En mantenimiento'),
+    ('Fuera de servicio');
 GO
 
 USE ClubDeportivo;

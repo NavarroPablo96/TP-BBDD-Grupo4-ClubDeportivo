@@ -103,8 +103,21 @@ VALUES (@id_b, 0, 202, DATEFROMPARTS(@anio, 2, 1));
 INSERT INTO PROFESIONAL (dni, nombre, domicilio, telefono, titulo)
 VALUES (30111222, 'Ana Torres', 'Calle 9 de Julio 300', '2237000001', 'Profesora de Educación Física');
 
-INSERT INTO AREA (cod_area, ubicacion, capacidad, estado_mantenimiento)
-VALUES ('AREA-01', 'Gimnasio planta baja', 30, 'Bueno');
+-- Áreas con su historial de estados. AREA-01 siempre operativa; AREA-02 pasa por varios estados, vuelve a
+-- un estado anterior y hoy está fuera de servicio.
+DECLARE @inicio_anterior DATE = DATEFROMPARTS(@anio - 1, 1, 1);
+DECLARE @mantenimiento_1 DATE = DATEFROMPARTS(@anio - 1, 6, 1);
+DECLARE @operativa_2 DATE = DATEFROMPARTS(@anio - 1, 9, 1);
+DECLARE @fuera_servicio DATE = DATEFROMPARTS(@anio, 1, 1);
+
+EXEC SP_ALTA_AREA @cod_area = 'AREA-01', @ubicacion = 'Gimnasio planta baja', @capacidad = 30,
+    @nombre_estado = 'Operativa', @fecha_desde = @inicio_anterior;
+
+EXEC SP_ALTA_AREA @cod_area = 'AREA-02', @ubicacion = 'Pileta cubierta', @capacidad = 25,
+    @nombre_estado = 'Operativa', @fecha_desde = @inicio_anterior;
+EXEC SP_CAMBIAR_ESTADO_AREA @cod_area = 'AREA-02', @nombre_estado = 'En mantenimiento', @fecha_desde = @mantenimiento_1;
+EXEC SP_CAMBIAR_ESTADO_AREA @cod_area = 'AREA-02', @nombre_estado = 'Operativa', @fecha_desde = @operativa_2;
+EXEC SP_CAMBIAR_ESTADO_AREA @cod_area = 'AREA-02', @nombre_estado = 'Fuera de servicio', @fecha_desde = @fuera_servicio;
 
 INSERT INTO PUEDE_DESEMPENIARSE_EN (dni, cod_actividad)
 VALUES (30111222, 201);
@@ -154,6 +167,11 @@ GO
 --   VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR: una sola fila, mayores 2 (Marta, Raul); las categorías sin socios no se muestran.
 SELECT * FROM VW_TITULARES_DEUDA_ANIO_ACTUAL;
 SELECT * FROM VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR;
+
+-- Estado vigente de las áreas (VW_ESTADO_ACTUAL_AREA): AREA-01 Operativa; AREA-02 Fuera de servicio.
+-- El historial completo de AREA-02: Operativa, En mantenimiento, Operativa (vuelve a un estado anterior) y Fuera de servicio.
+SELECT * FROM VW_ESTADO_ACTUAL_AREA;
+SELECT * FROM HISTORIAL_AREA_ESTADO WHERE cod_area = 'AREA-02' ORDER BY fecha_desde;
 GO
 
 -- Pruebas de rechazo y control. Cada bloque corre en una transacción que se revierte.
@@ -177,7 +195,7 @@ GO
 -- B: área no apta para la actividad -> rechaza 50006
 BEGIN TRY
     BEGIN TRANSACTION;
-    INSERT INTO AREA (cod_area, ubicacion, capacidad, estado_mantenimiento) VALUES ('AREA-99', 'Pileta', 10, 'Bueno');
+    INSERT INTO AREA (cod_area, ubicacion, capacidad) VALUES ('AREA-99', 'Pileta', 10);
     INSERT INTO DICTADO (fecha_desde, fecha_fin, hora_inicio, hora_fin, cod_actividad) VALUES ('2026-03-01', '2026-03-31', '10:00', '11:00', 201);
     INSERT INTO SE_DESARROLLA_EN (cod_dictado, cod_area) VALUES (SCOPE_IDENTITY(), 'AREA-99');
     PRINT 'B: NO RECHAZADO (error)';
@@ -194,7 +212,7 @@ GO
 BEGIN TRY
     BEGIN TRANSACTION;
     INSERT INTO PROFESIONAL (dni, nombre, domicilio, telefono, titulo) VALUES (1001, 'Prof Test', 'Calle 1', '123', 'Lic');
-    INSERT INTO AREA (cod_area, ubicacion, capacidad, estado_mantenimiento) VALUES ('AREA-99', 'Pileta', 10, 'Bueno');
+    INSERT INTO AREA (cod_area, ubicacion, capacidad) VALUES ('AREA-99', 'Pileta', 10);
     INSERT INTO PUEDE_DESEMPENIARSE_EN (dni, cod_actividad) VALUES (1001, 201);
     INSERT INTO APTA_PARA (cod_area, cod_actividad) VALUES ('AREA-99', 201);
 
@@ -220,7 +238,7 @@ GO
 BEGIN TRY
     BEGIN TRANSACTION;
     INSERT INTO PROFESIONAL (dni, nombre, domicilio, telefono, titulo) VALUES (1001, 'Prof Test', 'Calle 1', '123', 'Lic');
-    INSERT INTO AREA (cod_area, ubicacion, capacidad, estado_mantenimiento) VALUES ('AREA-99', 'Pileta', 10, 'Bueno');
+    INSERT INTO AREA (cod_area, ubicacion, capacidad) VALUES ('AREA-99', 'Pileta', 10);
     INSERT INTO PUEDE_DESEMPENIARSE_EN (dni, cod_actividad) VALUES (1001, 201);
     INSERT INTO APTA_PARA (cod_area, cod_actividad) VALUES ('AREA-99', 201);
 
@@ -359,7 +377,7 @@ BEGIN CATCH
 END CATCH;
 BEGIN TRY
     BEGIN TRANSACTION;
-    INSERT INTO AREA (cod_area, ubicacion, capacidad, estado_mantenimiento) VALUES ('  ', 'Pileta', 10, 'Bueno');
+    INSERT INTO AREA (cod_area, ubicacion, capacidad) VALUES ('  ', 'Pileta', 10);
     PRINT 'L2: NO RECHAZADO (error)';
     ROLLBACK;
 END TRY
@@ -369,7 +387,7 @@ BEGIN CATCH
 END CATCH;
 BEGIN TRY
     BEGIN TRANSACTION;
-    INSERT INTO AREA (cod_area, ubicacion, capacidad, estado_mantenimiento) VALUES (' A1', 'Pileta', 10, 'Bueno');
+    INSERT INTO AREA (cod_area, ubicacion, capacidad) VALUES (' A1', 'Pileta', 10);
     PRINT 'L3: NO RECHAZADO (error)';
     ROLLBACK;
 END TRY
@@ -513,7 +531,7 @@ GO
 
 -- R: SP_ALTA_DICTADO con un área no apta para la actividad -> rechaza 50006 y no deja filas.
 -- El área de prueba se inserta fuera de la transacción del SP y se borra al final.
-INSERT INTO AREA (cod_area, ubicacion, capacidad, estado_mantenimiento) VALUES ('AREA-98', 'Pileta', 10, 'Bueno');
+INSERT INTO AREA (cod_area, ubicacion, capacidad) VALUES ('AREA-98', 'Pileta', 10);
 DECLARE @dictados_antes INT = (SELECT COUNT(*) FROM DICTADO);
 DECLARE @id_r INT;
 BEGIN TRY
@@ -528,4 +546,81 @@ IF (SELECT COUNT(*) FROM DICTADO) = @dictados_antes
 ELSE
     PRINT 'R: quedaron filas en DICTADO (error)';
 DELETE FROM AREA WHERE cod_area = 'AREA-98';
+GO
+
+-- T: dos estados del mismo área en la misma fecha -> rechaza por la PK (error 2627)
+BEGIN TRY
+    BEGIN TRANSACTION;
+    INSERT INTO HISTORIAL_AREA_ESTADO (cod_area, fecha_desde, nombre_estado)
+    VALUES ('AREA-01', DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1), 'En mantenimiento');
+    PRINT 'T: NO RECHAZADO (error)';
+    ROLLBACK;
+END TRY
+BEGIN CATCH
+    PRINT 'T: rechazo ' + CAST(ERROR_NUMBER() AS VARCHAR(10)) + ' ' + ERROR_MESSAGE();
+    IF XACT_STATE() <> 0 ROLLBACK;
+END CATCH;
+GO
+
+-- U: estado que no está en el catálogo ESTADO_AREA -> rechaza por la FK (error 547) y no deja filas
+BEGIN TRY
+    EXEC SP_CAMBIAR_ESTADO_AREA @cod_area = 'AREA-01', @nombre_estado = 'Roto';
+    PRINT 'U: NO RECHAZADO (error)';
+END TRY
+BEGIN CATCH
+    PRINT 'U: rechazo ' + CAST(ERROR_NUMBER() AS VARCHAR(10)) + ' ' + ERROR_MESSAGE();
+END CATCH;
+IF (SELECT COUNT(*) FROM HISTORIAL_AREA_ESTADO WHERE nombre_estado = 'Roto') = 0
+    PRINT 'U: sin filas nuevas en HISTORIAL_AREA_ESTADO';
+ELSE
+    PRINT 'U: quedaron filas en HISTORIAL_AREA_ESTADO (error)';
+GO
+
+-- V (control): un área vuelve a un estado anterior y un estado con fecha futura no es el vigente
+BEGIN TRY
+    BEGIN TRANSACTION;
+    DECLARE @hoy_v DATE = CAST(GETDATE() AS DATE);
+    DECLARE @d1_v DATE = DATEADD(DAY, -30, @hoy_v);
+    DECLARE @d2_v DATE = DATEADD(DAY, -20, @hoy_v);
+    DECLARE @d3_v DATE = DATEADD(DAY, -10, @hoy_v);
+    DECLARE @d4_v DATE = DATEADD(DAY, 30, @hoy_v);
+    EXEC SP_ALTA_AREA @cod_area = 'AREA-97', @ubicacion = 'Salón', @capacidad = 20, @nombre_estado = 'Operativa', @fecha_desde = @d1_v;
+    EXEC SP_CAMBIAR_ESTADO_AREA @cod_area = 'AREA-97', @nombre_estado = 'En mantenimiento', @fecha_desde = @d2_v;
+    EXEC SP_CAMBIAR_ESTADO_AREA @cod_area = 'AREA-97', @nombre_estado = 'Operativa', @fecha_desde = @d3_v;
+    EXEC SP_CAMBIAR_ESTADO_AREA @cod_area = 'AREA-97', @nombre_estado = 'Fuera de servicio', @fecha_desde = @d4_v;
+    IF (SELECT COUNT(*) FROM HISTORIAL_AREA_ESTADO WHERE cod_area = 'AREA-97') = 4
+       AND (SELECT nombre_estado FROM VW_ESTADO_ACTUAL_AREA WHERE cod_area = 'AREA-97') = 'Operativa'
+       AND (SELECT fecha_desde FROM VW_ESTADO_ACTUAL_AREA WHERE cod_area = 'AREA-97') = @d3_v
+        PRINT 'V: control OK (vuelve a Operativa, el estado futuro no es el vigente)';
+    ELSE
+        PRINT 'V: control FALLÓ';
+    ROLLBACK;
+END TRY
+BEGIN CATCH
+    PRINT 'V: control FALLÓ ' + CAST(ERROR_NUMBER() AS VARCHAR(10)) + ' ' + ERROR_MESSAGE();
+    IF XACT_STATE() <> 0 ROLLBACK;
+END CATCH;
+GO
+
+-- W: SP_ALTA_AREA con un estado inválido -> rechaza (547) y no deja el área sin estado
+BEGIN TRY
+    EXEC SP_ALTA_AREA @cod_area = 'AREA-96', @ubicacion = 'Sala', @capacidad = 10, @nombre_estado = 'Roto';
+    PRINT 'W: NO RECHAZADO (error)';
+END TRY
+BEGIN CATCH
+    PRINT 'W: rechazo ' + CAST(ERROR_NUMBER() AS VARCHAR(10)) + ' ' + ERROR_MESSAGE();
+END CATCH;
+IF (SELECT COUNT(*) FROM AREA WHERE cod_area = 'AREA-96') = 0
+    PRINT 'W: el área no quedó cargada';
+ELSE
+    PRINT 'W: quedó el área sin estado (error)';
+GO
+
+-- X (control): estado vigente de los datos de prueba (AREA-01 Operativa, AREA-02 Fuera de servicio con 4 registros)
+IF (SELECT nombre_estado FROM VW_ESTADO_ACTUAL_AREA WHERE cod_area = 'AREA-01') = 'Operativa'
+   AND (SELECT nombre_estado FROM VW_ESTADO_ACTUAL_AREA WHERE cod_area = 'AREA-02') = 'Fuera de servicio'
+   AND (SELECT COUNT(*) FROM HISTORIAL_AREA_ESTADO WHERE cod_area = 'AREA-02') = 4
+    PRINT 'X: control OK (estados vigentes de AREA-01 y AREA-02)';
+ELSE
+    PRINT 'X: control FALLÓ';
 GO

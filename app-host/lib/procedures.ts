@@ -73,6 +73,28 @@ export const PROCEDURES: ProcDef[] = [
     ],
   },
   {
+    name: "SP_ALTA_AREA",
+    title: "Alta de área",
+    description: "Crea el área y su primer estado de mantenimiento en una transacción. Sin fecha rige la actual.",
+    params: [
+      { name: "cod_area", label: "Código de área", type: "text" },
+      { name: "ubicacion", label: "Ubicación", type: "text" },
+      { name: "capacidad", label: "Capacidad", type: "int" },
+      { name: "nombre_estado", label: "Estado inicial", type: "text", source: { table: "HISTORIAL_AREA_ESTADO", column: "nombre_estado" } },
+      { name: "fecha_desde", label: "Estado desde", type: "date", optional: true },
+    ],
+  },
+  {
+    name: "SP_CAMBIAR_ESTADO_AREA",
+    title: "Cambiar estado de un área",
+    description: "Registra un nuevo estado del área desde una fecha (por defecto, la actual). Puede volver a un estado anterior.",
+    params: [
+      { name: "cod_area", label: "Código de área", type: "text", source: { table: "HISTORIAL_AREA_ESTADO", column: "cod_area" } },
+      { name: "nombre_estado", label: "Nuevo estado", type: "text", source: { table: "HISTORIAL_AREA_ESTADO", column: "nombre_estado" } },
+      { name: "fecha_desde", label: "Estado desde", type: "date", optional: true },
+    ],
+  },
+  {
     name: "SP_INSCRIBIR_ACTIVIDAD",
     title: "Inscribir socio en actividad",
     description: "Si la actividad es arancelada genera la cuota 1 por adelantado.",
@@ -113,6 +135,11 @@ export const VIEWS: { name: string; title: string; description: string }[] = [
     name: "VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR",
     title: "Consulta 2: socios en todas las gratuitas (año anterior)",
     description: "Cantidad de socios por categoría inscriptos en todas las actividades gratuitas el año pasado.",
+  },
+  {
+    name: "VW_ESTADO_ACTUAL_AREA",
+    title: "Estado actual de las áreas",
+    description: "Estado vigente de cada área según su historial (el de mayor fecha que no sea futura). Un área sin historial figura con estado NULL.",
   },
   {
     name: "VW_CONFLICTOS_DICTADO",
