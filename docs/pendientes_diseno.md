@@ -8,7 +8,7 @@ Registro de decisiones de diseño: qué está abierto, qué se decidió y qué q
 |---|---|---|
 | 1 | Periodicidades de `meses_por_cuota` | Cerrado |
 | 2 | Jerarquía de `ACTIVIDAD` | Aplicado (con limitación) |
-| 3 | Dominio de `AREA.estado_mantenimiento` | **Abierto** |
+| 3 | Estado de mantenimiento de las áreas (historial) | Aplicado como historial; lista de estados a confirmar con el grupo |
 | 4 | Tipos de `PROFESIONAL.dni` y `AREA.cod_area` | Aplicado |
 | 5 | Baja de inscripciones al cambiar de categoría (H12) | Aplicado; supuestos a confirmar con el grupo |
 | 6 | Categorías y `nro_orden` | Aplicado |
@@ -25,12 +25,31 @@ Los TODO 10 a 12 surgieron de comparar `TP_BBDD_Grupo_4.md` (§4.1 y §4.2) con 
 
 # Abiertos
 
-## TODO 3: Definir dominio de `AREA.estado_mantenimiento`
+## TODO 3: Estado de mantenimiento de las áreas (historial)
 
-**Estado:** ABIERTO. El usuario lo va a consultar. Hoy es `VARCHAR(30) NOT NULL` sin valores permitidos, porque el enunciado no los define (`-- TODO` en `01_creacion_tablas.sql`). Propuesta sin confirmar: `CHECK` con `'Operativa'`, `'En mantenimiento'`, `'Fuera de servicio'`.
+**Estado:** APLICADO por decisión del usuario como historial de estados; la lista de estados es una propuesta que el grupo todavía no confirmó. El enunciado no define los estados de mantenimiento ni si se guarda su historia, y no se admiten atributos multivaluados, así que el estado salió de `AREA` y pasó a dos tablas nuevas (cambia el modelo de TP_BBDD_Grupo_4.md §4.1; ver TODO 12).
 
-- [ ] Acordar la lista de estados y reemplazar el tipo libre por un `CHECK` o una tabla de dominio.
-- [ ] Confirmar que un área tiene un solo estado a la vez: no se admiten atributos multivaluados, así que varios estados simultáneos o un historial exigirían una tabla aparte (`ESTADO_AREA`) y un cambio de modelo.
+Modelo (DER del grupo: N:M entre `AREA` y `ESTADO_AREA`, con `fecha_desde` como clave de la relación):
+
+```
+ESTADO_AREA (nombre_estado)                                   PK = CK = {nombre_estado}
+HISTORIAL_AREA_ESTADO (cod_area, fecha_desde, nombre_estado)  PK = CK = {(cod_area, fecha_desde)}  FK = {cod_area, nombre_estado}
+```
+
+- `ESTADO_AREA` es el catálogo de estados posibles (`Operativa`, `En mantenimiento`, `Fuera de servicio`, cargados en `02`).
+- `HISTORIAL_AREA_ESTADO` registra desde qué fecha un área está en un estado. Un área puede volver a un estado anterior (otra `fecha_desde`).
+- Restricción adicional: **un área tiene un único estado por `fecha_desde`**. Una N:M con `fecha_desde` como clave no lo expresa (permitiría dos estados distintos en la misma fecha), así que la clave candidata real es `(cod_area, fecha_desde)` y `nombre_estado` depende de ella.
+- El estado vigente de un área es el de mayor `fecha_desde` que no sea futura: `VW_ESTADO_ACTUAL_AREA` (en `04`). Sin `fecha_hasta`, para evitar huecos y superposiciones entre períodos.
+- `SP_ALTA_AREA` crea el área y su primer estado en una transacción; `SP_CAMBIAR_ESTADO_AREA` agrega un nuevo estado (sin fecha rige la actual).
+- Participación total de `AREA` en `HISTORIAL_AREA_ESTADO` (§4.1): sólo la garantiza `SP_ALTA_AREA`; un `INSERT` directo en `AREA` la saltea y el área figura sin estado (limitación, ver TODO 10).
+- La app host ofrece los dos SP y la vista, y las tablas nuevas con sugerencias por FK.
+- Pruebas T–X en `05`.
+
+- [x] Decidir el modelo (catálogo + historial) y la PK `(cod_area, fecha_desde)`.
+- [x] Implementar tablas, catálogo, SP, vista, datos de prueba y pruebas.
+- [x] Adaptar la app host.
+- [ ] Confirmar con el grupo la lista de estados y que el historial es lo deseado (cada estado extra es una fila de `ESTADO_AREA` en `02`).
+- [ ] Reflejar las dos tablas nuevas y la restricción de la fecha en §4.1 y §4.2 de la resolución, y su normalización en §5 (TODO 12).
 
 ## TODO 5: Baja de inscripciones al cambiar de categoría (H12)
 
@@ -89,6 +108,7 @@ Supuestos a confirmar con el grupo:
 | l.157: toda `ACTIVIDAD` debe estar en `HABILITADA_PARA` | Limitación: no se garantiza. `SP_ALTA_ACTIVIDAD_*` no cargan habilitaciones. |
 | l.163: todo `PROFESIONAL` debe estar en `PUEDE_DESEMPENIARSE_EN` | Limitación: no se garantiza. |
 | l.169: toda `AREA` debe estar en `APTA_PARA` | Limitación: no se garantiza. |
+| Toda `AREA` debe estar en `HISTORIAL_AREA_ESTADO` (TODO 3) | `SP_ALTA_AREA`. Un `INSERT` directo en `AREA` lo saltea. |
 | l.188: todo `DICTADO` debe estar en `SE_DESARROLLA_EN` | Resuelto por SP: `SP_ALTA_DICTADO` recibe `@cod_area` y carga el área en la misma transacción. Un `INSERT` directo lo saltea. |
 | l.136: todo `GRUPO_FAMILIAR` debe estar en `SOCIO` | `SP_ALTA_GRUPO_FAMILIAR` y `TR_SOCIO_BAJA_GRUPO`. Un `INSERT` directo los saltea. |
 | l.177 y l.182: todo `DICTADO` debe tener día y profesional | `SP_ALTA_DICTADO`. Un `INSERT` directo lo saltea. |
@@ -127,6 +147,8 @@ Opciones para las cuatro primeras filas:
 - **§4.1 no refleja los cambios posteriores**: tablas nuevas, orden de implementación y los CHECK agregados (`CK_CATEGORIA_NOMBRE`, `CK_SOCIO_NRO_ORDEN`, `CK_AREA_COD_AREA`, entre otros). Es el entregable a. En particular, por el TODO 5:
   - `INSCRIPCION` suma `estado` y `fecha_baja`, y su PK incluye `fecha_inscripcion`.
   - `CUOTA_ARANCEL` suma `fecha_inscripcion` a su PK y a la FK hacia `INSCRIPCION`.
+  - `AREA` pierde `estado_mantenimiento` y se agregan `ESTADO_AREA (nombre_estado)` y `HISTORIAL_AREA_ESTADO (cod_area, fecha_desde, nombre_estado)` con PK `(cod_area, fecha_desde)` (TODO 3). El modelo pasa a 21 tablas.
+  - Hay que agregar a §4.2 la restricción "un área tiene un único estado por `fecha_desde`" y a §5 el análisis de normalización de las dos tablas nuevas.
 - **H9 contradice §4.2 l.219**: H9 dice que la primera cuota vence en la fecha de inscripción; §4.2 dice que la cuota k vence a los k × `meses_por_cuota` meses. Los scripts siguen H9.
 - **Las consultas 1 y 2 son vistas** (`VW_TITULARES_DEUDA_ANIO_ACTUAL` y `VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR`); la resolución no las define como SP ni como vistas.
 

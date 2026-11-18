@@ -33,16 +33,18 @@ Data Source=(localdb)\MSSQLLocalDB;Integrated Security=True;Persist Security Inf
 
 Nota: con `-S localhost` no conecta en esta máquina; la instancia es `(localdb)\MSSQLLocalDB`.
 
+La aplicación host (`app-host/`) necesita la base ya creada con estos seis scripts; ver §4.3.
+
 ## 3. Estado: qué está hecho
 
-### 3.1 Tablas (`01_creacion_tablas.sql`): 19 de 19
+### 3.1 Tablas (`01_creacion_tablas.sql`): 21
 
-Implementadas todas las de §4.1 de TP_BBDD_Grupo_4.md, con su `DROP` en el bloque inicial:
+Las 19 de §4.1 de TP_BBDD_Grupo_4.md más `ESTADO_AREA` y `HISTORIAL_AREA_ESTADO` (historial de estados de las áreas, TODO 3; ver TODO 12), con su `DROP` en el bloque inicial:
 
 - Socios: `CATEGORIA`, `GRUPO_FAMILIAR`, `SOCIO`.
 - Cuotas sociales: `VALOR_CUOTA_SOCIAL`, `CUOTA_SOCIAL`.
 - Actividades: `ACTIVIDAD`, `ACTIVIDAD_ARANCELADA`, `ACTIVIDAD_GRATUITA`, `HABILITADA_PARA`, `INSCRIPCION`.
-- Profesionales y áreas: `PROFESIONAL`, `AREA`, `PUEDE_DESEMPENIARSE_EN`, `APTA_PARA`.
+- Profesionales y áreas: `PROFESIONAL`, `AREA`, `ESTADO_AREA` (catálogo de estados), `HISTORIAL_AREA_ESTADO`, `PUEDE_DESEMPENIARSE_EN`, `APTA_PARA`.
 - Dictados: `DICTADO`, `DICTADO_DIA`, `A_CARGO_DE`, `SE_DESARROLLA_EN`.
 - Arancel: `CUOTA_ARANCEL`.
 
@@ -59,6 +61,8 @@ Constraints de dominio resueltos con DDL:
 - `CK_INSCRIPCION_ESTADO` (`'Activa'` / `'Baja'`) y `CK_INSCRIPCION_FECHA_BAJA` (activa sin fecha de baja; baja con fecha no anterior a la inscripción) (TODO 5).
 
 Claves: la PK de `INSCRIPCION` es `(nro_socio_base, nro_orden, cod_actividad, fecha_inscripcion)` y `CUOTA_ARANCEL` la incluye en su PK y en su FK hacia `INSCRIPCION` (TODO 5).
+
+Historial de estados de las áreas (TODO 3): `AREA` ya no tiene `estado_mantenimiento`. `ESTADO_AREA (nombre_estado)` es el catálogo y `HISTORIAL_AREA_ESTADO (cod_area, fecha_desde, nombre_estado)` es la relación N:M con `fecha_desde`. Su PK es `(cod_area, fecha_desde)`: un área puede volver a un estado anterior, pero tiene un único estado por fecha. Las FK exigen que el área y el estado existan.
 
 ### 3.2 Lógica en `03_logica_socios_cuotas.sql`
 
@@ -96,18 +100,25 @@ Aporte de un compañero, adaptado a los códigos de error y al estilo de `03`:
 - `TR_A_CARGO_DE_PROF_HABILITADO` (sobre `A_CARGO_DE`): el profesional debe estar en `PUEDE_DESEMPENIARSE_EN` para la actividad del dictado (§4.2). Error 50005.
 - `TR_SE_DESARROLLA_EN_AREA_APTA` (sobre `SE_DESARROLLA_EN`): el área debe estar en `APTA_PARA` para la actividad del dictado (§4.2). Error 50006.
 
+Historial de estados de las áreas (TODO 3):
+
+- `SP_ALTA_AREA (@cod_area, @ubicacion, @capacidad, @nombre_estado, @fecha_desde = NULL)`: crea el área y su primer estado en una transacción. Sin fecha rige la actual. Es la única vía que garantiza que toda área tenga estado (§4.1); un `INSERT` directo en `AREA` la saltea.
+- `SP_CAMBIAR_ESTADO_AREA (@cod_area, @nombre_estado, @fecha_desde = NULL)`: registra un nuevo estado desde una fecha. Rechaza (PK) un segundo estado en la misma fecha y (FK) un estado que no está en el catálogo.
+- `VW_ESTADO_ACTUAL_AREA`: estado vigente de cada área, el de mayor `fecha_desde` que no sea futura. Un área sin historial figura con estado `NULL`.
+
 Los códigos de error son únicos en todo `03` y `04` (50001 a 50014, con 50004 usado por `SP_LIQUIDAR_CUOTA_SOCIAL`).
 
 ### 3.4 Datos de prueba
 
-- `02_insercion_datos.sql`: 3 categorías (`infantiles` -30, `mayores` 0, `vitalicios` -15), 5 grupos (8 socios, titulares con `nro_orden = 0`), 4 valores de cuota social relativos al año actual (año anterior: 10000 y 12000; año actual: 15000 y 18000 desde julio). Sin `CUOTA_SOCIAL`, sin actividades, sin inscripciones.
-- `05_datos_logica_socios_cuotas.sql`: 3 grupos nuevos (Marta Ruiz, Pablo Diaz, Elena Sosa), 2 actividades gratuitas (201, 202) y 1 arancelada (301) creadas con los SP de alta, habilitaciones, cuotas de enero a marzo del año actual con pagos completos, parciales y sin pagar, inscripciones del año anterior y del actual, un profesional, un área y un dictado de ejemplo. Las fechas son relativas al año actual para que las vistas den los mismos resultados cualquiera sea el año.
+- `02_insercion_datos.sql`: 3 categorías (`infantiles` -30, `mayores` 0, `vitalicios` -15), 3 estados de área (`Operativa`, `En mantenimiento`, `Fuera de servicio`; lista propuesta, pendiente de confirmar con el grupo), 5 grupos (8 socios, titulares con `nro_orden = 0`), 4 valores de cuota social relativos al año actual (año anterior: 10000 y 12000; año actual: 15000 y 18000 desde julio). Sin `CUOTA_SOCIAL`, sin actividades, sin inscripciones.
+- `05_datos_logica_socios_cuotas.sql`: 3 grupos nuevos (Marta Ruiz, Pablo Diaz, Elena Sosa), 2 actividades gratuitas (201, 202) y 1 arancelada (301) creadas con los SP de alta, habilitaciones, cuotas de enero a marzo del año actual con pagos completos, parciales y sin pagar, inscripciones del año anterior y del actual, un profesional, dos áreas con su historial de estados y un dictado de ejemplo. Las fechas son relativas al año actual para que las vistas den los mismos resultados cualquiera sea el año.
 
 Resultados esperados con estos datos:
 
 - `VW_TITULARES_DEUDA_ANIO_ACTUAL`: Juan Perez 121500.00 (3), Carlos Gomez 90000.00 (2), Sofia Rodriguez 45000.00 (1), Roberto Fernandez 38250.00 (1), Laura Martinez 45000.00 (1), Pablo Diaz 30000.00 (1), Elena Sosa 78250.00 (2).
 - `VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR`: una sola fila, mayores 2. Las categorías sin socios no se muestran.
 - Deuda de arancel de Marta (actividad 301): 8000.00.
+- `VW_ESTADO_ACTUAL_AREA`: `AREA-01` Operativa y `AREA-02` Fuera de servicio. El historial de `AREA-02` tiene cuatro registros: Operativa, En mantenimiento, Operativa (vuelve a un estado anterior) y Fuera de servicio.
 
 ### 3.5 Verificación hecha
 
@@ -121,6 +132,7 @@ Resultados esperados con estos datos:
   - Q: puesta al día, cuotas 1 a 4 correlativas al liquidar abril sin haber liquidado antes, sin duplicar al repetir.
   - R: `SP_ALTA_DICTADO` con un área no apta rechaza 50006 y no deja filas.
   - S: sin actividades gratuitas, `VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR` no devuelve filas.
+  - T–X (historial de estados de áreas): dos estados en la misma fecha rechazan por la PK (2627); un estado fuera del catálogo rechaza por la FK (547) y no deja filas (U); un área vuelve a un estado anterior y un estado con fecha futura no es el vigente (V); `SP_ALTA_AREA` con estado inválido rechaza y no deja el área (W); estados vigentes de los datos de prueba (X).
 - Liquidar dos veces el mismo mes no duplica cuotas. Los montos calculados coinciden con los esperados.
 - El alta de un titular infantil no deja filas en `GRUPO_FAMILIAR` (rollback del SP).
 - Re-correr `02` sobre una base cargada falla por diseño (`FK_SOCIO_GRUPO_FAMILIAR`): la `IDENTITY` de `GRUPO_FAMILIAR` no se reinicia. Re-correr `05` sobre datos cargados falla por claves duplicadas.
@@ -131,21 +143,28 @@ Resultados esperados con estos datos:
 
 Detalle en [pendientes_diseno.md](pendientes_diseno.md). No implementar ni asumir sin el equipo.
 
-- TODO 3: dominio de `AREA.estado_mantenimiento` (y confirmar que es monovaluado). Hoy es texto libre; los datos de `05` usan `'Bueno'`, que quedaría inválido con un CHECK.
+- TODO 3 (aplicado, a confirmar): la lista de estados de `ESTADO_AREA` (`Operativa`, `En mantenimiento`, `Fuera de servicio`) es una propuesta; agregar o quitar un estado es una fila de `02`. Falta confirmar que el historial es lo que el grupo quiere y la lista de estados.
 - TODO 8: confirmar que "año pasado" es el año de `fecha_inscripcion` (`YEAR(GETDATE()) - 1`). El caso vacío ya está decidido: la consulta 2 no devuelve filas.
 - Supuestos del TODO 5 a confirmar: la baja corta las cuotas de arancel, las bajas cuentan en la consulta 2 y reinscribirse crea una fila nueva.
-- TODO 12: correcciones a la resolución entregada (§3.2, §4.1, §5.1.1, §5.1.15 y H9 vs §4.2 l.219).
+- TODO 12: correcciones a la resolución entregada (§3.2, §4.1 con las dos tablas del historial, §5.1.1, §5.1.15 y H9 vs §4.2 l.219).
 
 ### 4.2 Restricciones del modelo sin garantizar
 
 Surgen de comparar TP_BBDD_Grupo_4.md §4.1 y §4.2 con los scripts. Quedan como limitación documentada por decisión del usuario (TODO 10 y 11 en [pendientes_diseno.md](pendientes_diseno.md)); hay que registrarlas en las restricciones adicionales (entregable d).
 
-- Participaciones totales (TODO 10): `ACTIVIDAD` en `HABILITADA_PARA`, `PROFESIONAL` en `PUEDE_DESEMPENIARSE_EN` y `AREA` en `APTA_PARA` no se garantizan. `GRUPO_FAMILIAR`, `DICTADO` (día, profesional y área) y la jerarquía de `ACTIVIDAD` sólo se garantizan por los SP de alta; un `INSERT` directo los saltea.
+- Participaciones totales (TODO 10): `ACTIVIDAD` en `HABILITADA_PARA`, `PROFESIONAL` en `PUEDE_DESEMPENIARSE_EN` y `AREA` en `APTA_PARA` no se garantizan. `GRUPO_FAMILIAR`, `DICTADO` (día, profesional y área), `AREA` en `HISTORIAL_AREA_ESTADO` (todo área tiene al menos un estado) y la jerarquía de `ACTIVIDAD` sólo se garantizan por los SP de alta; un `INSERT` directo los saltea.
 - Cuotas (TODO 11): la correlatividad y el vencimiento de `CUOTA_ARANCEL` y el monto de `CUOTA_SOCIAL` sólo los cumplen los SP; un `INSERT` o `UPDATE` directo los saltea.
 
 ### 4.3 Aplicación host
 
-Enunciado (funcionalidad e): aplicación sencilla en un lenguaje host que acceda a la base y haga una operación con transacciones. **Fuera de alcance por ahora** (decisión del equipo de trabajo). Se retoma más adelante.
+Enunciado (funcionalidad e): aplicación sencilla en un lenguaje host que acceda a la base y haga una operación con transacciones.
+
+Hay un MVP en `app-host/` (Next.js, TypeScript): lista, inserta, edita y borra filas de las 21 tablas, muestra las cuatro vistas, ejecuta los SP de `03` y `04` (incluido el alta de áreas y el cambio de estado) y tiene una consola SQL. Features, backlog y limitaciones en [APP_HOST_FEATURES.md](APP_HOST_FEATURES.md); cómo correrla en `app-host/README.md` y en CLAUDE.md §8.
+
+- **No valida a propósito:** todo valor viaja a la base y los triggers, constraints y SP son los que rechazan; los errores de SQL Server se muestran tal cual. Sirve para probar los rechazos 50001 a 50014 y los `CK_*`.
+- **La lógica de negocio vive en la base:** un cambio de comportamiento se hace en `scripts/`, no en la app. Si cambia la firma de un SP, hay que actualizarla a mano en `app-host/lib/procedures.ts`.
+- **Requiere** la base creada con `00` a `05`, Node 20+, LocalDB y el ODBC Driver 17/18 para SQL Server (sólo Windows).
+- **Pendiente:** decidir qué operación con transacciones se muestra en la entrega (los SP de alta y de inscripción corren en una transacción) y el backlog opcional de la app.
 
 ### 4.4 Entregables de documentación (enunciado a–e)
 
@@ -153,7 +172,7 @@ Enunciado (funcionalidad e): aplicación sencilla en un lenguaje host que acceda
 - b) Supuestos: ya están en TP_BBDD_Grupo_4.md §2 (H1–H14) y en los TODO de `pendientes_diseno.md`. Falta juntar los supuestos propios del código: mapeo y porcentajes de categorías, vencimiento de la cuota, "año pasado", `cod_area` como texto, `SP_LIQUIDAR_CUOTA_ARANCEL` mensual.
 - c) Diseño físico: falta documentarlo. Aún no hay documento.
 - d) Restricciones adicionales: TP_BBDD_Grupo_4.md §3.2 está vacío. Hay que completarlo con las de §4.2, los triggers y SP implementados y las limitaciones del TODO 10 (TODO 12).
-- e) Código de SP y triggers: está en `03_logica_socios_cuotas.sql` y `04_logica_areas_profesionales.sql`. Falta revisarlo contra §4.2 cuando se cierren los TODO abiertos.
+- e) Código de SP y triggers: está en `03_logica_socios_cuotas.sql` y `04_logica_areas_profesionales.sql`. Falta revisarlo contra §4.2 cuando se cierren los TODO abiertos. La aplicación host (MVP) está en `app-host/` (§4.3).
 
 ## 5. Decisiones: resumen
 
@@ -163,7 +182,7 @@ Todas en [pendientes_diseno.md](pendientes_diseno.md).
 |---|---|---|
 | 1 | Periodicidades de `meses_por_cuota` | Cerrado: `IN (1, 2, 3, 6, 12)`. |
 | 2 | Jerarquía de `ACTIVIDAD` | Aplicado (triggers y SP de alta). Totalidad sólo vía SP. |
-| 3 | Dominio de `AREA.estado_mantenimiento` | **Abierto**; el usuario lo consulta. |
+| 3 | Estado de mantenimiento de las áreas | Aplicado como historial (`ESTADO_AREA` + `HISTORIAL_AREA_ESTADO`). Lista de estados a confirmar con el grupo. |
 | 4 | Tipos de `PROFESIONAL.dni` y `AREA.cod_area` | Aplicado: `dni` `INT` con `dni > 0`; `cod_area` `VARCHAR(20)` con CHECK de formato. |
 | 5 | Baja de inscripciones al cambiar categoría (H12) | Aplicado: `estado` y `fecha_baja` en `INSCRIPCION`, PK con `fecha_inscripcion`. Supuestos a confirmar. |
 | 6 | Categorías y `nro_orden` | Aplicado: `infantiles/mayores/vitalicios` y titular en 0. |
@@ -185,12 +204,13 @@ Todas en [pendientes_diseno.md](pendientes_diseno.md).
 - `SP_ALTA_DICTADO` ahora exige `@cod_area`: cualquier llamado anterior sin ese parámetro falla.
 - Una reinscripción tras una baja crea una fila nueva y exige otra `fecha_inscripcion` (la PK la incluye); dos inscripciones en la misma fecha chocan por la PK.
 - Las vistas de las consultas dependen de `GETDATE()`: sin datos del año actual o del anterior devuelven vacío o ceros.
+- Un área cargada con un `INSERT` directo en `AREA` no tiene historial: `VW_ESTADO_ACTUAL_AREA` la muestra con estado `NULL`. Un área también queda sin estado si se borra su último registro de `HISTORIAL_AREA_ESTADO`.
+- `AREA.estado_mantenimiento` ya no existe: cualquier consulta o `INSERT` que la use falla. El estado se lee de `VW_ESTADO_ACTUAL_AREA`.
 
 ## 7. Próximos pasos sugeridos
 
-1. Llevar al grupo la consulta de [consulta_decisiones_abiertas.md](consulta_decisiones_abiertas.md) (TODO 3, 8 y 9, los supuestos del TODO 5 y el TODO 12).
-2. Con las respuestas, aplicar en los scripts el dominio de `estado_mantenimiento` (TODO 3) y, si cambia, el criterio de "año pasado" de la consulta 2 (TODO 8).
+1. Llevar al grupo la consulta de [consulta_decisiones_abiertas.md](consulta_decisiones_abiertas.md) (TODO 3 con el historial, TODO 8 y 9, los supuestos del TODO 5 y el TODO 12).
+2. Con las respuestas, ajustar la lista de `ESTADO_AREA` (TODO 3) y, si cambia, el criterio de "año pasado" de la consulta 2 (TODO 8).
 3. Completar los entregables a–d (§4.4). Conviene empezar por d (restricciones adicionales) y b (supuestos), que se pueden redactar con lo ya implementado.
 4. Resolver con el grupo las inconsistencias de TP_BBDD_Grupo_4.md (TODO 12) antes de entregar.
-
-La aplicación host queda fuera de este plan.
+5. Elegir con el grupo la operación con transacciones que se muestra en la aplicación host (§4.3) y revisar el backlog opcional de [APP_HOST_FEATURES.md](APP_HOST_FEATURES.md).

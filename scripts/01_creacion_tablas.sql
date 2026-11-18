@@ -9,6 +9,8 @@ DROP TABLE IF EXISTS DICTADO_DIA;
 DROP TABLE IF EXISTS DICTADO;
 DROP TABLE IF EXISTS APTA_PARA;
 DROP TABLE IF EXISTS PUEDE_DESEMPENIARSE_EN;
+DROP TABLE IF EXISTS HISTORIAL_AREA_ESTADO;
+DROP TABLE IF EXISTS ESTADO_AREA;
 DROP TABLE IF EXISTS AREA;
 DROP TABLE IF EXISTS PROFESIONAL;
 DROP TABLE IF EXISTS INSCRIPCION;
@@ -263,14 +265,14 @@ CREATE TABLE PROFESIONAL(
 );
 GO
 
--- AREA (cod_area, ubicacion, capacidad, estado_mantenimiento)
+-- AREA (cod_area, ubicacion, capacidad)
 -- PK = CK = {cod_area}
+-- El estado de mantenimiento no es un atributo de AREA: se registra como historial en HISTORIAL_AREA_ESTADO
+-- (pendientes_diseno.md TODO 3).
 CREATE TABLE AREA(
     cod_area VARCHAR(20) NOT NULL,
     ubicacion VARCHAR(100) NOT NULL,
     capacidad INT NOT NULL,
-    -- TODO: definir dominio de estado_mantenimiento (no especificado en el enunciado).
-    estado_mantenimiento VARCHAR(30) NOT NULL,
 
     -- Clave primaria
     CONSTRAINT PK_AREA PRIMARY KEY (cod_area),
@@ -282,6 +284,42 @@ CREATE TABLE AREA(
 
     -- Validación capacidad (supuesto: no negativa)
     CONSTRAINT CK_AREA_CAPACIDAD CHECK (capacidad >= 0)
+);
+GO
+
+-- ESTADO_AREA (nombre_estado)
+-- PK = CK = {nombre_estado}
+-- Catálogo de los estados de mantenimiento posibles de un área. Los valores se cargan en 02.
+CREATE TABLE ESTADO_AREA(
+    nombre_estado VARCHAR(30) NOT NULL,
+
+    -- Clave primaria
+    CONSTRAINT PK_ESTADO_AREA PRIMARY KEY (nombre_estado)
+);
+GO
+
+-- HISTORIAL_AREA_ESTADO (cod_area, fecha_desde, nombre_estado)
+-- PK = CK = {(cod_area, fecha_desde)} FK = {cod_area, nombre_estado}
+-- Relación N:M entre AREA y ESTADO_AREA con fecha_desde: cada fila dice que desde esa fecha el área está en ese estado.
+-- Un área puede volver a un estado anterior (otra fecha_desde) pero tiene un único estado por fecha.
+-- El estado vigente es el de mayor fecha_desde que no sea futura (VW_ESTADO_ACTUAL_AREA en 04).
+CREATE TABLE HISTORIAL_AREA_ESTADO(
+    cod_area VARCHAR(20) NOT NULL,
+    fecha_desde DATE NOT NULL,
+    nombre_estado VARCHAR(30) NOT NULL,
+
+    -- Clave primaria
+    CONSTRAINT PK_HISTORIAL_AREA_ESTADO
+        PRIMARY KEY (cod_area, fecha_desde),
+
+    -- Claves foráneas
+    CONSTRAINT FK_HISTORIAL_AREA_ESTADO_AREA
+        FOREIGN KEY (cod_area)
+        REFERENCES AREA(cod_area),
+
+    CONSTRAINT FK_HISTORIAL_AREA_ESTADO_ESTADO_AREA
+        FOREIGN KEY (nombre_estado)
+        REFERENCES ESTADO_AREA(nombre_estado)
 );
 GO
 

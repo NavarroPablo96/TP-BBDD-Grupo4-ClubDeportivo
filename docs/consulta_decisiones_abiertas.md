@@ -6,13 +6,14 @@ Restricción a tener en cuenta en todas las opciones: **no se admiten atributos 
 
 ## 1. Estados de mantenimiento de un área (`AREA.estado_mantenimiento`)
 
-Hoy es un `VARCHAR(30)` de texto libre. El enunciado no dice qué valores puede tener ni si un área puede tener más de un estado a la vez.
+El enunciado no dice qué valores puede tener ni si se guarda la historia. Como no se admiten atributos multivaluados, ya está implementado como historial en dos tablas nuevas (cambia el modelo relacional de §4.1, que pasa a 21 tablas):
 
-* Propuesta: un único estado por área (atributo monovaluado), restringido con un `CHECK` a `Operativa`, `En mantenimiento` y `Fuera de servicio`.
-* Alternativa, si un área puede tener varios estados a la vez o se quiere guardar el historial: no se puede guardar en una sola columna (sería un atributo multivaluado). Habría que sacarlo a una tabla aparte, por ejemplo `ESTADO_AREA (cod_area, estado, fecha_desde)`, y cambia el modelo relacional de §4.1.
+* `ESTADO_AREA (nombre_estado)`: catálogo de estados posibles. Propuesta: `Operativa`, `En mantenimiento` y `Fuera de servicio`.
+* `HISTORIAL_AREA_ESTADO (cod_area, fecha_desde, nombre_estado)`: desde qué fecha un área está en un estado. Un área puede volver a un estado anterior y tiene un único estado por fecha. El estado vigente es el de mayor fecha que no sea futura.
+* `AREA` ya no tiene la columna `estado_mantenimiento`.
 * Preguntas:
-   * ¿Un área tiene un solo estado en cada momento?
-   * ¿Esos tres valores o cuáles?
+   * ¿Esos tres estados o cuáles?
+   * ¿Les sirve el historial de estados, o alcanza con un estado actual por área?
 
 ## 2. Baja de inscripciones al cambiar de categoría (H12)
 
