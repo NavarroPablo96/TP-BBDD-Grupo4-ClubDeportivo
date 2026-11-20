@@ -17,12 +17,13 @@ Orden obligatorio (cada uno depende del anterior). Los scripts están en `script
 | `02_insercion_datos.sql` | Carga datos base: categorías, grupos, socios y valores de cuota social. |
 | `03_logica_socios_cuotas.sql` | Triggers, stored procedures y consultas de socios, cuotas, actividades y dictados. Se puede volver a correr (`CREATE OR ALTER`). |
 | `04_logica_areas_profesionales.sql` | Triggers de profesional habilitado y área apta de los dictados. Se puede volver a correr (`CREATE OR ALTER`). Va antes de `05` porque sus pruebas verifican estos rechazos. |
-| `05_datos_logica_socios_cuotas.sql` | Datos de prueba y pruebas de rechazo para `03` y `04`: actividades, habilitaciones, grupos, cuotas, inscripciones y dictado. Asume que se corre después de `04` sobre una base recién creada. |
+| `05_datos_logica_socios_cuotas.sql` | Datos de prueba para `03` y `04`: actividades, habilitaciones, grupos, cuotas, inscripciones, dictado y áreas. No provoca errores (los `IDENTITY` quedan correlativos). Asume que se corre después de `04` sobre una base recién creada. |
+| `06_pruebas_rechazos.sql` | Pruebas de rechazo y control (A–Z), cada una en una transacción que se revierte. Se corre después de `05`; al final reinicia `GRUPO_FAMILIAR` y `DICTADO` con `DBCC CHECKIDENT` para no dejar saltos de numeración. |
 
 Comando (LocalDB, autenticación de Windows), desde la raíz del repo:
 
 ```bash
-sqlcmd -S "(localdb)\MSSQLLocalDB" -E -b -i scripts/00_creacion_bd.sql -i scripts/01_creacion_tablas.sql -i scripts/02_insercion_datos.sql -i scripts/03_logica_socios_cuotas.sql -i scripts/04_logica_areas_profesionales.sql -i scripts/05_datos_logica_socios_cuotas.sql
+sqlcmd -S "(localdb)\MSSQLLocalDB" -E -b -i scripts/00_creacion_bd.sql -i scripts/01_creacion_tablas.sql -i scripts/02_insercion_datos.sql -i scripts/03_logica_socios_cuotas.sql -i scripts/04_logica_areas_profesionales.sql -i scripts/05_datos_logica_socios_cuotas.sql -i scripts/06_pruebas_rechazos.sql
 ```
 
 Connection string para SSMS / clientes (LocalDB):

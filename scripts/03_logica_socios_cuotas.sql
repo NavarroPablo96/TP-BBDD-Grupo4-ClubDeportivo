@@ -2,12 +2,11 @@ USE ClubDeportivo;
 GO
 
 -- Triggers, procedimientos almacenados y vistas de socios y cuotas sociales.
--- Se pueden volver a crear con CREATE OR ALTER.
 
 
 -- TR_INSCRIPCION_CATEGORIA_HABILITADA
 -- §4.2: un socio sólo puede inscribirse en una actividad habilitada para su categoría.
--- Sólo valida las inscripciones activas: la baja por cambio de categoría (H12) no debe rechazarse a sí misma.
+-- Sólo valida las inscripciones activas: la baja por cambio de categoría no debe rechazarse a sí misma.
 CREATE OR ALTER TRIGGER TR_INSCRIPCION_CATEGORIA_HABILITADA
 ON INSCRIPCION
 AFTER INSERT, UPDATE
@@ -35,8 +34,7 @@ GO
 
 
 -- TR_INSCRIPCION_VIGENTE_UNICA
--- H6: cada socio tiene como máximo una inscripción vigente (activa) por actividad.
--- Se usa un trigger y no un índice único filtrado porque sqlcmd corre con QUOTED_IDENTIFIER OFF.
+-- cada socio tiene como máximo una inscripción vigente (activa) por actividad.
 CREATE OR ALTER TRIGGER TR_INSCRIPCION_VIGENTE_UNICA
 ON INSCRIPCION
 AFTER INSERT, UPDATE
@@ -160,7 +158,7 @@ GO
 
 
 -- TR_CUOTA_ARANCEL_ACTIVIDAD_ARANCELADA
--- §4.2 y H9: sólo las inscripciones a actividades aranceladas generan cuotas de arancel.
+-- sólo las inscripciones a actividades aranceladas generan cuotas de arancel.
 CREATE OR ALTER TRIGGER TR_CUOTA_ARANCEL_ACTIVIDAD_ARANCELADA
 ON CUOTA_ARANCEL
 AFTER INSERT, UPDATE
@@ -183,7 +181,7 @@ GO
 
 
 -- SP_ALTA_GRUPO_FAMILIAR
--- H1 y §4.2: todo grupo familiar tiene un titular con nro_orden = 0.
+-- todo grupo familiar tiene un titular con nro_orden = 0.
 -- Crea el grupo y su titular en una misma transacción.
 CREATE OR ALTER PROCEDURE SP_ALTA_GRUPO_FAMILIAR
     @telefono VARCHAR(20),
@@ -221,10 +219,9 @@ GO
 
 
 -- SP_LIQUIDAR_CUOTA_SOCIAL
--- H8, H10 y §4.2: genera la cuota social de un mes para cada grupo que no la tenga.
+-- genera la cuota social de un mes para cada grupo que no la tenga.
 -- Monto = suma, sobre cada integrante, del monto base vigente el primer día del mes
 -- afectado por el porcentaje de su categoría. Se fija al generar.
--- Supuesto: fecha_vencimiento = último día del mes (pendientes_diseno.md TODO 7).
 CREATE OR ALTER PROCEDURE SP_LIQUIDAR_CUOTA_SOCIAL
     @anio INT,
     @mes INT
@@ -275,18 +272,10 @@ BEGIN
 END;
 GO
 
-
--- Las consultas 1 y 2 son vistas (decisión del usuario, pendientes_diseno.md TODO 8 y 9).
--- Se eliminan los SP que las implementaban antes, por si se re-corre este script sobre una base existente.
-DROP PROCEDURE IF EXISTS SP_CONSULTA_TITULARES_DEUDA;
-DROP PROCEDURE IF EXISTS SP_CONSULTA_SOCIOS_GRATUITAS;
-GO
-
-
 -- VW_TITULARES_DEUDA_ANIO_ACTUAL
--- Consulta 1 del enunciado: titulares de grupos con cuotas sociales adeudadas del año en curso,
+-- titulares de grupos con cuotas sociales adeudadas del año en curso,
 -- con el importe total adeudado y la cantidad de integrantes del grupo.
--- La deuda no se almacena: es monto_a_pagar - monto_abonado (§4.2).
+-- La deuda no se almacena: es monto_a_pagar - monto_abonado
 CREATE OR ALTER VIEW VW_TITULARES_DEUDA_ANIO_ACTUAL
 AS
 SELECT t.nro_socio_base,
@@ -315,11 +304,9 @@ GO
 
 
 -- VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR
--- Consulta 2 del enunciado: cantidad de socios por categoría inscriptos en todas las
+-- cantidad de socios por categoría inscriptos en todas las
 -- actividades gratuitas durante el año pasado (YEAR(GETDATE()) - 1, según fecha_inscripcion).
--- Cuenta también las inscripciones dadas de baja: el socio estuvo inscripto ese año (supuesto, TODO 5).
--- Sólo muestra las categorías con al menos un socio que cumple: si nadie cumple, o no hay actividades
--- gratuitas, la vista no devuelve filas (decisión del usuario, TODO 8).
+-- Cuenta también las inscripciones dadas de baja: el socio estuvo inscripto ese año..
 CREATE OR ALTER VIEW VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR
 AS
 SELECT c.nombre_categoria,
@@ -349,7 +336,7 @@ GO
 
 
 -- VW_CONFLICTOS_DICTADO
--- §4.2: un área o un profesional no puede estar en dos dictados que coincidan en día, horario y período.
+-- un área o un profesional no puede estar en dos dictados que coincidan en día, horario y período.
 -- Lista los pares de dictados en conflicto. Los triggers de cronograma consultan esta vista.
 CREATE OR ALTER VIEW VW_CONFLICTOS_DICTADO
 AS
@@ -390,11 +377,11 @@ GO
 
 
 -- Los triggers de profesional habilitado y área apta (TR_A_CARGO_DE_PROF_HABILITADO y
--- TR_SE_DESARROLLA_EN_AREA_APTA) están en 04_logica_areas_profesionales.sql.
+-- TR_SE_DESARROLLA_EN_AREA_APTA).
 
 
 -- TR_DICTADO_SOLAPAMIENTO (una por tabla que participa del conflicto)
--- §4.2: sin solapamiento de día, horario y período para áreas y profesionales.
+-- sin solapamiento de día, horario y período para áreas y profesionales.
 CREATE OR ALTER TRIGGER TR_DICTADO_SOLAPAMIENTO_DICTADO
 ON DICTADO
 AFTER INSERT, UPDATE
@@ -445,7 +432,7 @@ GO
 
 
 -- TR_SOCIO_BAJA_GRUPO
--- H1, H13 y §4.2: el titular no se da de baja mientras el grupo tenga integrantes,
+-- el titular no se da de baja mientras el grupo tenga integrantes,
 -- y un grupo no queda sin integrantes. Al borrar el grupo completo (cascada), no aplica.
 CREATE OR ALTER TRIGGER TR_SOCIO_BAJA_GRUPO
 ON SOCIO
@@ -482,8 +469,8 @@ GO
 
 
 -- SP_INSCRIBIR_ACTIVIDAD
--- §4.2 y H9: inscribe a un socio. Si la actividad es arancelada, genera la primera cuota,
--- que vence en la fecha de inscripción (se paga por adelantado). Todo en una transacción.
+-- inscribe a un socio. Si la actividad es arancelada, genera la primera cuota,
+-- que vence en la fecha de inscripción (se paga por adelantado).
 CREATE OR ALTER PROCEDURE SP_INSCRIBIR_ACTIVIDAD
     @nro_socio_base INT,
     @nro_orden INT,
@@ -521,12 +508,12 @@ GO
 
 
 -- SP_LIQUIDAR_CUOTA_ARANCEL
--- H8, H9 y §4.2: genera las cuotas de arancel vencidas hasta el mes indicado que todavía no existan.
--- La cuota n (n >= 1) vence (n - 1) * meses_por_cuota meses después de la inscripción (H9: la primera
--- vence en la fecha de inscripción). Es una "puesta al día": si no se corrió en un mes, la próxima corrida
+-- genera las cuotas de arancel vencidas hasta el mes indicado que todavía no existan.
+-- La cuota n (n >= 1) vence (n - 1) * meses_por_cuota meses después de la inscripción. 
+-- Es una "puesta al día": si no se corrió en un mes, la próxima corrida
 -- completa las cuotas faltantes y la numeración queda correlativa. No duplica.
--- Sólo genera cuotas de inscripciones activas; las dadas de baja (H12) únicamente las vencidas hasta su fecha de baja.
--- Las cuotas ya generadas se mantienen (H8).
+-- Sólo genera cuotas de inscripciones activas; las dadas de baja  únicamente las vencidas hasta su fecha de baja.
+-- Las cuotas ya generadas se mantienen
 CREATE OR ALTER PROCEDURE SP_LIQUIDAR_CUOTA_ARANCEL
     @anio INT,
     @mes INT
@@ -611,7 +598,7 @@ END;
 GO
 
 
--- Jerarquía de ACTIVIDAD (pendientes_diseno.md TODO 2).
+-- Jerarquía de ACTIVIDAD
 -- Coherencia: la subentidad sólo admite actividades de su tipo. Eso garantiza también la exclusividad.
 -- Totalidad: SP_ALTA_ACTIVIDAD_* crean la actividad y su subentidad juntas.
 -- Limitación: un INSERT directo en ACTIVIDAD, o borrar una subentidad, puede dejar una actividad sin clasificar.
@@ -689,7 +676,7 @@ GO
 
 
 -- SP_ALTA_ACTIVIDAD_ARANCELADA
--- Crea la actividad (tipo A) y su subentidad en una transacción.
+-- Crea la actividad y su subentidad en una transacción.
 CREATE OR ALTER PROCEDURE SP_ALTA_ACTIVIDAD_ARANCELADA
     @cod_actividad INT,
     @nombre VARCHAR(50),
@@ -720,7 +707,7 @@ GO
 
 
 -- SP_ALTA_ACTIVIDAD_GRATUITA
--- Crea la actividad (tipo G) y su subentidad en una transacción.
+-- Crea la actividad y su subentidad en una transacción.
 CREATE OR ALTER PROCEDURE SP_ALTA_ACTIVIDAD_GRATUITA
     @cod_actividad INT,
     @nombre VARCHAR(50)
@@ -749,7 +736,7 @@ GO
 
 
 -- SP_ALTA_DICTADO
--- H13 y §4.1: crea un dictado con un día, un profesional a cargo y un área, en una transacción.
+-- crea un dictado con un día, un profesional a cargo y un área, en una transacción.
 -- Un dictado sin profesional ni área no se puede crear: A_CARGO_DE exige @dni y SE_DESARROLLA_EN exige @cod_area.
 -- Supuesto: los días, profesionales y áreas adicionales se cargan después en DICTADO_DIA, A_CARGO_DE y SE_DESARROLLA_EN.
 CREATE OR ALTER PROCEDURE SP_ALTA_DICTADO

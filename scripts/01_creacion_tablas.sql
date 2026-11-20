@@ -146,7 +146,6 @@ CREATE TABLE ACTIVIDAD(
     CONSTRAINT PK_ACTIVIDAD PRIMARY KEY (cod_actividad),
 
     -- Validación tipo de actividad
-    -- La jerarquía (coherencia, exclusividad, totalidad) se garantiza en 03: TR_ACTIVIDAD_*_TIPO y SP_ALTA_ACTIVIDAD_*.
     CONSTRAINT CK_ACTIVIDAD_tipo CHECK (tipo in ('A', 'G'))
 
 );
@@ -172,7 +171,7 @@ CREATE TABLE ACTIVIDAD_ARANCELADA(
     CONSTRAINT CK_ACTIVIDAD_ARANCELADA_ARANCEL
         CHECK (arancel >= 0),
 
-    -- Verificación de meses por cuota (periodicidades admitidas: decisión del usuario, ver pendientes_diseno.md TODO 1)
+    -- Verificación de meses por cuota
     CONSTRAINT CK_ACTIVIDAD_ARANCELADA_MESES_POR_CUOTA
         CHECK (meses_por_cuota IN (1, 2, 3, 6, 12))
 );
@@ -215,8 +214,8 @@ GO
 
 -- INSCRIPCION (nro_socio_base, nro_orden, cod_actividad, fecha_inscripcion, estado, fecha_baja)
 -- PK = CK = {(nro_socio_base, nro_orden, cod_actividad, fecha_inscripcion)} FK = {(nro_socio_base, nro_orden), cod_actividad}
--- La PK incluye fecha_inscripcion para permitir reinscribirse tras una baja (H6, H12; pendientes_diseno.md TODO 5).
--- Que haya a lo sumo una inscripción 'Activa' por socio y actividad lo garantiza TR_INSCRIPCION_VIGENTE_UNICA en 03.
+-- La PK incluye fecha_inscripcion para permitir reinscribirse tras una baja.
+-- Que haya a lo sumo una inscripción 'Activa' por socio y actividad lo garantiza TR_INSCRIPCION_VIGENTE_UNICA.
 CREATE TABLE INSCRIPCION(
     nro_socio_base INT NOT NULL,
     nro_orden INT NOT NULL,
@@ -268,7 +267,6 @@ GO
 -- AREA (cod_area, ubicacion, capacidad)
 -- PK = CK = {cod_area}
 -- El estado de mantenimiento no es un atributo de AREA: se registra como historial en HISTORIAL_AREA_ESTADO
--- (pendientes_diseno.md TODO 3).
 CREATE TABLE AREA(
     cod_area VARCHAR(20) NOT NULL,
     ubicacion VARCHAR(100) NOT NULL,
@@ -289,7 +287,7 @@ GO
 
 -- ESTADO_AREA (nombre_estado)
 -- PK = CK = {nombre_estado}
--- Catálogo de los estados de mantenimiento posibles de un área. Los valores se cargan en 02.
+-- Catálogo de los estados de mantenimiento posibles de un área.
 CREATE TABLE ESTADO_AREA(
     nombre_estado VARCHAR(30) NOT NULL,
 
@@ -302,7 +300,7 @@ GO
 -- PK = CK = {(cod_area, fecha_desde)} FK = {cod_area, nombre_estado}
 -- Relación N:M entre AREA y ESTADO_AREA con fecha_desde: cada fila dice que desde esa fecha el área está en ese estado.
 -- Un área puede volver a un estado anterior (otra fecha_desde) pero tiene un único estado por fecha.
--- El estado vigente es el de mayor fecha_desde que no sea futura (VW_ESTADO_ACTUAL_AREA en 04).
+-- El estado vigente es el de mayor fecha_desde que no sea futura (VW_ESTADO_ACTUAL_AREA).
 CREATE TABLE HISTORIAL_AREA_ESTADO(
     cod_area VARCHAR(20) NOT NULL,
     fecha_desde DATE NOT NULL,

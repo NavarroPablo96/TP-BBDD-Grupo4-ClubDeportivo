@@ -2,7 +2,6 @@ USE ClubDeportivo;
 GO
 
 
--- Orden inverso de dependencias. Incluye las tablas que cargan 03 y 05.
 DELETE FROM CUOTA_ARANCEL;
 DELETE FROM A_CARGO_DE;
 DELETE FROM SE_DESARROLLA_EN;
@@ -27,7 +26,6 @@ DELETE FROM PROFESIONAL;
 GO
 
 -- Sin DBCC CHECKIDENT: con RESEED 0 la primera fila queda con nro_socio_base = 0
--- y los SOCIO (que referencian 1..5) fallan la FK. Se asume base recreada por 00.
 GO
 
 
@@ -38,8 +36,7 @@ VALUES
     ('vitalicios', -15.00);
 GO
 
--- Estados de mantenimiento de un área. El enunciado no define la lista: propuesta pendiente de
--- confirmar con el grupo (pendientes_diseno.md TODO 3). Agregar o quitar un estado es agregar o quitar una fila.
+-- Estados de mantenimiento de un área.
 INSERT INTO ESTADO_AREA (nombre_estado)
 VALUES
     ('Operativa'),
