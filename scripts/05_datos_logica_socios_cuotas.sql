@@ -1,10 +1,9 @@
 USE ClubDeportivo;
 GO
 
-DECLARE @anio INT = YEAR(GETDATE());
-DECLARE @id_a INT;
-DECLARE @id_b INT;
-DECLARE @id_c INT;
+---------------------------------------------------------------------
+-------------------SECCION 1 ALTA DE ACTIVIDADES---------------------
+---------------------------------------------------------------------
 
 -- Actividades: 201 y 202 gratuitas, 301 arancelada. Se crean con los SP que garantizan la jerarquía.
 EXEC SP_ALTA_ACTIVIDAD_GRATUITA @cod_actividad = 201, @nombre = 'Caminata';
@@ -18,6 +17,13 @@ VALUES (201, 'infantiles'),
        (202, 'mayores'),
        (202, 'vitalicios'),
        (301, 'mayores');
+
+---------------------------------------------------------------------
+----------SECCION 2 ALTA DE GRUPOS FAMILIARES Y SOCIOS---------------
+---------------------------------------------------------------------
+DECLARE @id_a INT;
+DECLARE @id_b INT;
+DECLARE @id_c INT;
 
 -- Grupo A: titular mayores con un integrante infantiles
 EXEC SP_ALTA_GRUPO_FAMILIAR
@@ -52,6 +58,11 @@ EXEC SP_ALTA_GRUPO_FAMILIAR
 INSERT INTO SOCIO (nro_socio_base, nro_orden, nombre, fecha_nacimiento, correo_electronico, celular, nombre_categoria)
 VALUES (@id_c, 1, 'Raul Sosa', '1978-01-30', NULL, '2236000033', 'mayores');
 
+---------------------------------------------------------------------
+--------SECCION 3 LIQUIDACIÓN  Y PAGO DE CUOTAS SOCIALES-------------
+---------------------------------------------------------------------
+DECLARE @anio INT = YEAR(GETDATE());
+
 -- Cuotas sociales de enero a marzo del año actual para todos los grupos
 EXEC SP_LIQUIDAR_CUOTA_SOCIAL @anio = @anio, @mes = 1;
 EXEC SP_LIQUIDAR_CUOTA_SOCIAL @anio = @anio, @mes = 2;
@@ -80,6 +91,10 @@ WHERE nro_socio_base = @id_c
   AND anio = @anio
   AND mes = 1;
 
+---------------------------------------------------------------------
+----------SECCION 4 INSCRIPCIÓN A ACTIVIDADES GRATUITAS--------------
+---------------------------------------------------------------------
+
 -- Inscripciones del año anterior: Marta en las dos gratuitas, Raul en las dos, Tomas y Pablo sólo en una
 INSERT INTO INSCRIPCION (nro_socio_base, nro_orden, cod_actividad, fecha_inscripcion)
 VALUES (@id_a, 0, 201, DATEFROMPARTS(@anio - 1, 3, 1)),
@@ -92,6 +107,10 @@ VALUES (@id_a, 0, 201, DATEFROMPARTS(@anio - 1, 3, 1)),
 -- Inscripción del año actual de Pablo: no cuenta para la consulta del año anterior
 INSERT INTO INSCRIPCION (nro_socio_base, nro_orden, cod_actividad, fecha_inscripcion)
 VALUES (@id_b, 0, 202, DATEFROMPARTS(@anio, 2, 1));
+
+---------------------------------------------------------------------
+-------SECCION 5 ALTA DE PROFESIONAL Y CONFIGURACIÓN DE AREAS--------
+---------------------------------------------------------------------
 
 -- Cronograma: profesional y área aptos para la actividad 201, y un dictado válido
 INSERT INTO PROFESIONAL (dni, nombre, domicilio, telefono, titulo)
@@ -113,6 +132,11 @@ EXEC SP_CAMBIAR_ESTADO_AREA @cod_area = 'AREA-02', @nombre_estado = 'En mantenim
 EXEC SP_CAMBIAR_ESTADO_AREA @cod_area = 'AREA-02', @nombre_estado = 'Operativa', @fecha_desde = @operativa_2;
 EXEC SP_CAMBIAR_ESTADO_AREA @cod_area = 'AREA-02', @nombre_estado = 'Fuera de servicio', @fecha_desde = @fuera_servicio;
 
+---------------------------------------------------------------------
+--------SECCION 6 ALGUNAS RELACIONES Y CREACIÓN DICTADO--------------
+---------------------------------------------------------------------
+
+
 INSERT INTO PUEDE_DESEMPENIARSE_EN (dni, cod_actividad)
 VALUES (30111222, 201);
 
@@ -133,10 +157,18 @@ EXEC SP_ALTA_DICTADO
     @cod_area = 'AREA-01',
     @cod_dictado = @id_dictado OUTPUT;
 
+------------------------------------------------------------------------
+--SECCION 7 INSCRIPCIÓN A ACTIVIDAD ARANCELADA Y LIQUIDACIÓN DE CUOTAS--
+------------------------------------------------------------------------
+
 -- Arancel: Marta se inscribe en la arancelada 301 (cuota 1 por adelantado) y se liquidan febrero y marzo
 EXEC SP_INSCRIBIR_ACTIVIDAD @nro_socio_base = @id_a, @nro_orden = 0, @cod_actividad = 301, @fecha_inscripcion = @fecha_marta;
 EXEC SP_LIQUIDAR_CUOTA_ARANCEL @anio = @anio, @mes = 2;
 EXEC SP_LIQUIDAR_CUOTA_ARANCEL @anio = @anio, @mes = 3;
+
+---------------------------------------------------------------------
+----------SECCION 8 PAGOS ARANCELADOS Y CALCULO DE DEUDA-------------
+---------------------------------------------------------------------
 
 -- Cuota 1 paga todo, cuota 2 pago parcial, cuota 3 sin pagar
 UPDATE CUOTA_ARANCEL
@@ -154,6 +186,10 @@ SELECT SUM(monto_a_pagar - ISNULL(monto_abonado, 0)) AS deuda_arancel_marta
 FROM CUOTA_ARANCEL
 WHERE nro_socio_base = @id_a AND cod_actividad = 301;
 GO
+
+---------------------------------------------------------------------
+---------SECCION 9 CONSULTAS Y VERIFICACIÓN DE RESULTADOS------------
+---------------------------------------------------------------------
 
 -- Resultados esperados:
 --   VW_TITULARES_DEUDA_ANIO_ACTUAL: Juan Perez 121500.00 (3); Carlos Gomez 90000.00 (2); Sofia Rodriguez 45000.00 (1);
