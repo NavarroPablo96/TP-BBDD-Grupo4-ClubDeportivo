@@ -3,7 +3,180 @@ GO
 
 -- Triggers, procedimientos almacenados y vistas de socios y cuotas sociales.
 
+---------------------------------------------------------------------
+------------------------SECCION Integrante 1-------------------------
+---------------------------------------------------------------------
 
+-- TR_SOCIO_TITULAR_CATEGORIA
+-- §4.2: el titular de un grupo no puede pertenecer a la categoría infantiles.
+CREATE OR ALTER TRIGGER TR_SOCIO_TITULAR_CATEGORIA
+ON SOCIO
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF (
+        SELECT COUNT(*)
+        FROM inserted
+        WHERE nro_orden = 0
+          AND nombre_categoria = 'infantiles'
+    ) > 0
+    BEGIN
+        THROW 50003, 'El titular de un grupo familiar no puede pertenecer a la categoría infantiles.', 1;
+    END;
+END;
+GO
+
+
+-- TR_SOCIO_BAJA_GRUPO
+-- el titular no se da de baja mientras el grupo tenga integrantes,
+-- y un grupo no queda sin integrantes. Al borrar el grupo completo (cascada), no aplica.
+CREATE OR ALTER TRIGGER TR_SOCIO_BAJA_GRUPO
+ON SOCIO
+AFTER DELETE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF (
+        SELECT COUNT(*)
+        FROM deleted d
+        INNER JOIN SOCIO s
+            ON s.nro_socio_base = d.nro_socio_base
+        WHERE d.nro_orden = 0
+    ) > 0
+    BEGIN
+        THROW 50009, 'No se puede dar de baja el titular mientras el grupo tenga integrantes.', 1;
+    END;
+
+    IF (
+        SELECT COUNT(*)
+        FROM deleted d
+        INNER JOIN GRUPO_FAMILIAR g
+            ON g.nro_socio_base = d.nro_socio_base
+        LEFT JOIN SOCIO s
+            ON s.nro_socio_base = d.nro_socio_base
+        WHERE s.nro_socio_base IS NULL
+    ) > 0
+    BEGIN
+        THROW 50010, 'No se puede dar de baja el último integrante de un grupo familiar.', 1;
+    END;
+END;
+GO
+
+
+-- SP_ALTA_GRUPO_FAMILIAR
+-- todo grupo familiar tiene un titular con nro_orden = 0.
+-- Crea el grupo y su titular en una misma transacción.
+CREATE OR ALTER PROCEDURE SP_ALTA_GRUPO_FAMILIAR
+    @telefono VARCHAR(20),
+    @domicilio VARCHAR(100),
+    @nombre_titular VARCHAR(50),
+    @fecha_nacimiento DATE,
+    @nombre_categoria VARCHAR(30),
+    @correo_electronico VARCHAR(50) = NULL,
+    @celular VARCHAR(20) = NULL,
+    @nro_socio_base INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        INSERT INTO GRUPO_FAMILIAR (telefono, domicilio)
+        VALUES (@telefono, @domicilio);
+
+        SET @nro_socio_base = SCOPE_IDENTITY();
+
+        INSERT INTO SOCIO (nro_socio_base, nro_orden, nombre, fecha_nacimiento, correo_electronico, celular, nombre_categoria)
+        VALUES (@nro_socio_base, 0, @nombre_titular, @fecha_nacimiento, @correo_electronico, @celular, @nombre_categoria);
+
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF XACT_STATE() <> 0
+            ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH;
+END;
+GO
+
+---------------------------------------------------------------------
+------------------SECCION COMUN Integrante 1 y 4---------------------
+---------------------------------------------------------------------
+
+-- TR_SOCIO_CAMBIO_CATEGORIA
+-- H12: al cambiar la categoría de un socio se dan de baja sus inscripciones activas a actividades
+-- no habilitadas para la nueva categoría. Las compatibles se conservan.
+-- fecha_baja es la fecha actual (o la de inscripción si ésta es posterior, para respetar CK_INSCRIPCION_FECHA_BAJA).
+CREATE OR ALTER TRIGGER TR_SOCIO_CAMBIO_CATEGORIA
+ON SOCIO
+AFTER UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT UPDATE(nombre_categoria)
+        RETURN;
+
+    UPDATE i
+    SET estado = 'Baja',
+        fecha_baja = CASE WHEN CAST(GETDATE() AS DATE) < i.fecha_inscripcion
+                          THEN i.fecha_inscripcion
+                          ELSE CAST(GETDATE() AS DATE)
+                     END
+    FROM INSCRIPCION i
+    INNER JOIN inserted s
+        ON s.nro_socio_base = i.nro_socio_base
+       AND s.nro_orden = i.nro_orden
+    INNER JOIN deleted d
+        ON d.nro_socio_base = s.nro_socio_base
+       AND d.nro_orden = s.nro_orden
+    LEFT JOIN HABILITADA_PARA h
+        ON h.cod_actividad = i.cod_actividad
+       AND h.nombre_categoria = s.nombre_categoria
+    WHERE i.estado = 'Activa'
+      AND s.nombre_categoria <> d.nombre_categoria
+      AND h.cod_actividad IS NULL;
+END;
+GO
+
+
+-- VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR
+-- cantidad de socios por categoría inscriptos en todas las
+-- actividades gratuitas durante el año pasado (YEAR(GETDATE()) - 1, según fecha_inscripcion).
+-- Cuenta también las inscripciones dadas de baja: el socio estuvo inscripto ese año..
+CREATE OR ALTER VIEW VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR
+AS
+SELECT c.nombre_categoria,
+       COUNT(q.nro_socio_base) AS cantidad_socios
+FROM CATEGORIA c
+INNER JOIN (
+    SELECT s.nombre_categoria,
+           s.nro_socio_base,
+           s.nro_orden
+    FROM SOCIO s
+    INNER JOIN (
+        SELECT i.nro_socio_base,
+               i.nro_orden
+        FROM INSCRIPCION i
+        INNER JOIN ACTIVIDAD_GRATUITA g
+            ON g.cod_actividad = i.cod_actividad
+        WHERE YEAR(i.fecha_inscripcion) = YEAR(GETDATE()) - 1
+        GROUP BY i.nro_socio_base, i.nro_orden
+        HAVING COUNT(DISTINCT i.cod_actividad) = (SELECT COUNT(*) FROM ACTIVIDAD_GRATUITA)
+    ) todas
+        ON todas.nro_socio_base = s.nro_socio_base
+       AND todas.nro_orden = s.nro_orden
+) q
+    ON q.nombre_categoria = c.nombre_categoria
+GROUP BY c.nombre_categoria;
+GO
+---------------------------------------------------------------------
+------------------------SECCION Integrante 4-------------------------
+---------------------------------------------------------------------
 -- TR_INSCRIPCION_CATEGORIA_HABILITADA
 -- §4.2: un socio sólo puede inscribirse en una actividad habilitada para su categoría.
 -- Sólo valida las inscripciones activas: la baja por cambio de categoría no debe rechazarse a sí misma.
@@ -68,95 +241,6 @@ BEGIN
 END;
 GO
 
-
--- TR_VALOR_CUOTA_SOCIAL_VIGENCIA
--- §4.2: los períodos de VALOR_CUOTA_SOCIAL no se superponen ni dejan huecos.
--- Cada período debe terminar el día anterior al inicio del siguiente.
--- Sólo el último período puede no tener fecha_hasta.
-CREATE OR ALTER TRIGGER TR_VALOR_CUOTA_SOCIAL_VIGENCIA
-ON VALOR_CUOTA_SOCIAL
-AFTER INSERT, UPDATE, DELETE
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    IF (
-        SELECT COUNT(*)
-        FROM (
-            SELECT fecha_desde,
-                   fecha_hasta,
-                   LEAD(fecha_desde) OVER (ORDER BY fecha_desde) AS siguiente_desde
-            FROM VALOR_CUOTA_SOCIAL
-        ) periodos
-        WHERE (siguiente_desde IS NOT NULL
-               AND (fecha_hasta IS NULL OR fecha_hasta <> DATEADD(DAY, -1, siguiente_desde)))
-    ) > 0
-    BEGIN
-        THROW 50002, 'Los períodos de VALOR_CUOTA_SOCIAL se superponen o dejan huecos.', 1;
-    END;
-END;
-GO
-
-
--- TR_SOCIO_TITULAR_CATEGORIA
--- §4.2: el titular de un grupo no puede pertenecer a la categoría infantiles.
-CREATE OR ALTER TRIGGER TR_SOCIO_TITULAR_CATEGORIA
-ON SOCIO
-AFTER INSERT, UPDATE
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    IF (
-        SELECT COUNT(*)
-        FROM inserted
-        WHERE nro_orden = 0
-          AND nombre_categoria = 'infantiles'
-    ) > 0
-    BEGIN
-        THROW 50003, 'El titular de un grupo familiar no puede pertenecer a la categoría infantiles.', 1;
-    END;
-END;
-GO
-
-
--- TR_SOCIO_CAMBIO_CATEGORIA
--- H12: al cambiar la categoría de un socio se dan de baja sus inscripciones activas a actividades
--- no habilitadas para la nueva categoría. Las compatibles se conservan.
--- fecha_baja es la fecha actual (o la de inscripción si ésta es posterior, para respetar CK_INSCRIPCION_FECHA_BAJA).
-CREATE OR ALTER TRIGGER TR_SOCIO_CAMBIO_CATEGORIA
-ON SOCIO
-AFTER UPDATE
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    IF NOT UPDATE(nombre_categoria)
-        RETURN;
-
-    UPDATE i
-    SET estado = 'Baja',
-        fecha_baja = CASE WHEN CAST(GETDATE() AS DATE) < i.fecha_inscripcion
-                          THEN i.fecha_inscripcion
-                          ELSE CAST(GETDATE() AS DATE)
-                     END
-    FROM INSCRIPCION i
-    INNER JOIN inserted s
-        ON s.nro_socio_base = i.nro_socio_base
-       AND s.nro_orden = i.nro_orden
-    INNER JOIN deleted d
-        ON d.nro_socio_base = s.nro_socio_base
-       AND d.nro_orden = s.nro_orden
-    LEFT JOIN HABILITADA_PARA h
-        ON h.cod_actividad = i.cod_actividad
-       AND h.nombre_categoria = s.nombre_categoria
-    WHERE i.estado = 'Activa'
-      AND s.nombre_categoria <> d.nombre_categoria
-      AND h.cod_actividad IS NULL;
-END;
-GO
-
-
 -- TR_CUOTA_ARANCEL_ACTIVIDAD_ARANCELADA
 -- sólo las inscripciones a actividades aranceladas generan cuotas de arancel.
 CREATE OR ALTER TRIGGER TR_CUOTA_ARANCEL_ACTIVIDAD_ARANCELADA
@@ -178,295 +262,6 @@ BEGIN
     END;
 END;
 GO
-
-
--- SP_ALTA_GRUPO_FAMILIAR
--- todo grupo familiar tiene un titular con nro_orden = 0.
--- Crea el grupo y su titular en una misma transacción.
-CREATE OR ALTER PROCEDURE SP_ALTA_GRUPO_FAMILIAR
-    @telefono VARCHAR(20),
-    @domicilio VARCHAR(100),
-    @nombre_titular VARCHAR(50),
-    @fecha_nacimiento DATE,
-    @nombre_categoria VARCHAR(30),
-    @correo_electronico VARCHAR(50) = NULL,
-    @celular VARCHAR(20) = NULL,
-    @nro_socio_base INT OUTPUT
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    BEGIN TRY
-        BEGIN TRANSACTION;
-
-        INSERT INTO GRUPO_FAMILIAR (telefono, domicilio)
-        VALUES (@telefono, @domicilio);
-
-        SET @nro_socio_base = SCOPE_IDENTITY();
-
-        INSERT INTO SOCIO (nro_socio_base, nro_orden, nombre, fecha_nacimiento, correo_electronico, celular, nombre_categoria)
-        VALUES (@nro_socio_base, 0, @nombre_titular, @fecha_nacimiento, @correo_electronico, @celular, @nombre_categoria);
-
-        COMMIT TRANSACTION;
-    END TRY
-    BEGIN CATCH
-        IF XACT_STATE() <> 0
-            ROLLBACK TRANSACTION;
-        THROW;
-    END CATCH;
-END;
-GO
-
-
--- SP_LIQUIDAR_CUOTA_SOCIAL
--- genera la cuota social de un mes para cada grupo que no la tenga.
--- Monto = suma, sobre cada integrante, del monto base vigente el primer día del mes
--- afectado por el porcentaje de su categoría. Se fija al generar.
-CREATE OR ALTER PROCEDURE SP_LIQUIDAR_CUOTA_SOCIAL
-    @anio INT,
-    @mes INT
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    DECLARE @primer_dia DATE = DATEFROMPARTS(@anio, @mes, 1);
-    DECLARE @vencimiento DATE = EOMONTH(@primer_dia);
-    DECLARE @monto_base DECIMAL(15,2);
-
-    BEGIN TRY
-        BEGIN TRANSACTION;
-
-        SELECT @monto_base = monto_base
-        FROM VALOR_CUOTA_SOCIAL
-        WHERE fecha_desde <= @primer_dia
-          AND (fecha_hasta IS NULL OR fecha_hasta >= @primer_dia);
-
-        IF @monto_base IS NULL
-            THROW 50004, 'No hay valor de cuota social vigente para el período liquidado.', 1;
-
-        INSERT INTO CUOTA_SOCIAL (nro_socio_base, anio, mes, monto_a_pagar, monto_abonado, fecha_vencimiento, fecha_pago)
-        SELECT s.nro_socio_base,
-               @anio,
-               @mes,
-               SUM(ROUND(@monto_base * (1 + c.porcentaje_mod_cuota / 100.0), 2)),
-               NULL,
-               @vencimiento,
-               NULL
-        FROM SOCIO s
-        INNER JOIN CATEGORIA c
-            ON c.nombre_categoria = s.nombre_categoria
-        LEFT JOIN CUOTA_SOCIAL cs
-            ON cs.nro_socio_base = s.nro_socio_base
-           AND cs.anio = @anio
-           AND cs.mes = @mes
-        WHERE cs.nro_socio_base IS NULL
-        GROUP BY s.nro_socio_base;
-
-        COMMIT TRANSACTION;
-    END TRY
-    BEGIN CATCH
-        IF XACT_STATE() <> 0
-            ROLLBACK TRANSACTION;
-        THROW;
-    END CATCH;
-END;
-GO
-
--- VW_TITULARES_DEUDA_ANIO_ACTUAL
--- titulares de grupos con cuotas sociales adeudadas del año en curso,
--- con el importe total adeudado y la cantidad de integrantes del grupo.
--- La deuda no se almacena: es monto_a_pagar - monto_abonado
-CREATE OR ALTER VIEW VW_TITULARES_DEUDA_ANIO_ACTUAL
-AS
-SELECT t.nro_socio_base,
-       t.nombre AS nombre_titular,
-       deuda.importe_adeudado,
-       integrantes.cantidad_integrantes
-FROM (
-    SELECT nro_socio_base,
-           SUM(monto_a_pagar - ISNULL(monto_abonado, 0)) AS importe_adeudado
-    FROM CUOTA_SOCIAL
-    WHERE anio = YEAR(GETDATE())
-    GROUP BY nro_socio_base
-    HAVING SUM(monto_a_pagar - ISNULL(monto_abonado, 0)) > 0
-) deuda
-INNER JOIN SOCIO t
-    ON t.nro_socio_base = deuda.nro_socio_base
-   AND t.nro_orden = 0
-INNER JOIN (
-    SELECT nro_socio_base,
-           COUNT(*) AS cantidad_integrantes
-    FROM SOCIO
-    GROUP BY nro_socio_base
-) integrantes
-    ON integrantes.nro_socio_base = deuda.nro_socio_base;
-GO
-
-
--- VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR
--- cantidad de socios por categoría inscriptos en todas las
--- actividades gratuitas durante el año pasado (YEAR(GETDATE()) - 1, según fecha_inscripcion).
--- Cuenta también las inscripciones dadas de baja: el socio estuvo inscripto ese año..
-CREATE OR ALTER VIEW VW_SOCIOS_GRATUITAS_ANIO_ANTERIOR
-AS
-SELECT c.nombre_categoria,
-       COUNT(q.nro_socio_base) AS cantidad_socios
-FROM CATEGORIA c
-INNER JOIN (
-    SELECT s.nombre_categoria,
-           s.nro_socio_base,
-           s.nro_orden
-    FROM SOCIO s
-    INNER JOIN (
-        SELECT i.nro_socio_base,
-               i.nro_orden
-        FROM INSCRIPCION i
-        INNER JOIN ACTIVIDAD_GRATUITA g
-            ON g.cod_actividad = i.cod_actividad
-        WHERE YEAR(i.fecha_inscripcion) = YEAR(GETDATE()) - 1
-        GROUP BY i.nro_socio_base, i.nro_orden
-        HAVING COUNT(DISTINCT i.cod_actividad) = (SELECT COUNT(*) FROM ACTIVIDAD_GRATUITA)
-    ) todas
-        ON todas.nro_socio_base = s.nro_socio_base
-       AND todas.nro_orden = s.nro_orden
-) q
-    ON q.nombre_categoria = c.nombre_categoria
-GROUP BY c.nombre_categoria;
-GO
-
-
--- VW_CONFLICTOS_DICTADO
--- un área o un profesional no puede estar en dos dictados que coincidan en día, horario y período.
--- Lista los pares de dictados en conflicto. Los triggers de cronograma consultan esta vista.
-CREATE OR ALTER VIEW VW_CONFLICTOS_DICTADO
-AS
-WITH coincidencias_dia_horario AS (
-    SELECT DISTINCT d1.cod_dictado AS cod_dictado_1,
-                    d2.cod_dictado AS cod_dictado_2
-    FROM DICTADO d1
-    INNER JOIN DICTADO d2
-        ON d2.cod_dictado > d1.cod_dictado
-    INNER JOIN DICTADO_DIA x
-        ON x.cod_dictado = d1.cod_dictado
-    INNER JOIN DICTADO_DIA y
-        ON y.cod_dictado = d2.cod_dictado
-       AND y.dia_semana = x.dia_semana
-    WHERE d1.fecha_desde <= d2.fecha_fin
-      AND d2.fecha_desde <= d1.fecha_fin
-      AND d1.hora_inicio < d2.hora_fin
-      AND d2.hora_inicio < d1.hora_fin
-)
-SELECT c.cod_dictado_1,
-       c.cod_dictado_2
-FROM coincidencias_dia_horario c
-INNER JOIN SE_DESARROLLA_EN x
-    ON x.cod_dictado = c.cod_dictado_1
-INNER JOIN SE_DESARROLLA_EN y
-    ON y.cod_dictado = c.cod_dictado_2
-   AND y.cod_area = x.cod_area
-UNION
-SELECT c.cod_dictado_1,
-       c.cod_dictado_2
-FROM coincidencias_dia_horario c
-INNER JOIN A_CARGO_DE x
-    ON x.cod_dictado = c.cod_dictado_1
-INNER JOIN A_CARGO_DE y
-    ON y.cod_dictado = c.cod_dictado_2
-   AND y.dni = x.dni;
-GO
-
-
--- Los triggers de profesional habilitado y área apta (TR_A_CARGO_DE_PROF_HABILITADO y
--- TR_SE_DESARROLLA_EN_AREA_APTA).
-
-
--- TR_DICTADO_SOLAPAMIENTO (una por tabla que participa del conflicto)
--- sin solapamiento de día, horario y período para áreas y profesionales.
-CREATE OR ALTER TRIGGER TR_DICTADO_SOLAPAMIENTO_DICTADO
-ON DICTADO
-AFTER INSERT, UPDATE
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    IF (SELECT COUNT(*) FROM VW_CONFLICTOS_DICTADO) > 0
-        THROW 50007, 'El dictado se solapa con otro en día, horario y período, con un área o profesional en común.', 1;
-END;
-GO
-
-CREATE OR ALTER TRIGGER TR_DICTADO_SOLAPAMIENTO_DICTADO_DIA
-ON DICTADO_DIA
-AFTER INSERT, UPDATE
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    IF (SELECT COUNT(*) FROM VW_CONFLICTOS_DICTADO) > 0
-        THROW 50007, 'El dictado se solapa con otro en día, horario y período, con un área o profesional en común.', 1;
-END;
-GO
-
-CREATE OR ALTER TRIGGER TR_DICTADO_SOLAPAMIENTO_A_CARGO_DE
-ON A_CARGO_DE
-AFTER INSERT, UPDATE
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    IF (SELECT COUNT(*) FROM VW_CONFLICTOS_DICTADO) > 0
-        THROW 50007, 'El dictado se solapa con otro en día, horario y período, con un área o profesional en común.', 1;
-END;
-GO
-
-CREATE OR ALTER TRIGGER TR_DICTADO_SOLAPAMIENTO_SE_DESARROLLA_EN
-ON SE_DESARROLLA_EN
-AFTER INSERT, UPDATE
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    IF (SELECT COUNT(*) FROM VW_CONFLICTOS_DICTADO) > 0
-        THROW 50007, 'El dictado se solapa con otro en día, horario y período, con un área o profesional en común.', 1;
-END;
-GO
-
-
--- TR_SOCIO_BAJA_GRUPO
--- el titular no se da de baja mientras el grupo tenga integrantes,
--- y un grupo no queda sin integrantes. Al borrar el grupo completo (cascada), no aplica.
-CREATE OR ALTER TRIGGER TR_SOCIO_BAJA_GRUPO
-ON SOCIO
-AFTER DELETE
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    IF (
-        SELECT COUNT(*)
-        FROM deleted d
-        INNER JOIN SOCIO s
-            ON s.nro_socio_base = d.nro_socio_base
-        WHERE d.nro_orden = 0
-    ) > 0
-    BEGIN
-        THROW 50009, 'No se puede dar de baja el titular mientras el grupo tenga integrantes.', 1;
-    END;
-
-    IF (
-        SELECT COUNT(*)
-        FROM deleted d
-        INNER JOIN GRUPO_FAMILIAR g
-            ON g.nro_socio_base = d.nro_socio_base
-        LEFT JOIN SOCIO s
-            ON s.nro_socio_base = d.nro_socio_base
-        WHERE s.nro_socio_base IS NULL
-    ) > 0
-    BEGIN
-        THROW 50010, 'No se puede dar de baja el último integrante de un grupo familiar.', 1;
-    END;
-END;
-GO
-
 
 -- SP_INSCRIBIR_ACTIVIDAD
 -- inscribe a un socio. Si la actividad es arancelada, genera la primera cuota,
@@ -598,6 +393,129 @@ END;
 GO
 
 
+
+
+
+
+---------------------------------------------------------------------
+------------------------SECCION Integrante 2-------------------------
+---------------------------------------------------------------------
+-- TR_VALOR_CUOTA_SOCIAL_VIGENCIA
+-- §4.2: los períodos de VALOR_CUOTA_SOCIAL no se superponen ni dejan huecos.
+-- Cada período debe terminar el día anterior al inicio del siguiente.
+-- Sólo el último período puede no tener fecha_hasta.
+CREATE OR ALTER TRIGGER TR_VALOR_CUOTA_SOCIAL_VIGENCIA
+ON VALOR_CUOTA_SOCIAL
+AFTER INSERT, UPDATE, DELETE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF (
+        SELECT COUNT(*)
+        FROM (
+            SELECT fecha_desde,
+                   fecha_hasta,
+                   LEAD(fecha_desde) OVER (ORDER BY fecha_desde) AS siguiente_desde
+            FROM VALOR_CUOTA_SOCIAL
+        ) periodos
+        WHERE (siguiente_desde IS NOT NULL
+               AND (fecha_hasta IS NULL OR fecha_hasta <> DATEADD(DAY, -1, siguiente_desde)))
+    ) > 0
+    BEGIN
+        THROW 50002, 'Los períodos de VALOR_CUOTA_SOCIAL se superponen o dejan huecos.', 1;
+    END;
+END;
+GO
+
+
+-- SP_LIQUIDAR_CUOTA_SOCIAL
+-- genera la cuota social de un mes para cada grupo que no la tenga.
+-- Monto = suma, sobre cada integrante, del monto base vigente el primer día del mes
+-- afectado por el porcentaje de su categoría. Se fija al generar.
+CREATE OR ALTER PROCEDURE SP_LIQUIDAR_CUOTA_SOCIAL
+    @anio INT,
+    @mes INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @primer_dia DATE = DATEFROMPARTS(@anio, @mes, 1);
+    DECLARE @vencimiento DATE = EOMONTH(@primer_dia);
+    DECLARE @monto_base DECIMAL(15,2);
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        SELECT @monto_base = monto_base
+        FROM VALOR_CUOTA_SOCIAL
+        WHERE fecha_desde <= @primer_dia
+          AND (fecha_hasta IS NULL OR fecha_hasta >= @primer_dia);
+
+        IF @monto_base IS NULL
+            THROW 50004, 'No hay valor de cuota social vigente para el período liquidado.', 1;
+
+        INSERT INTO CUOTA_SOCIAL (nro_socio_base, anio, mes, monto_a_pagar, monto_abonado, fecha_vencimiento, fecha_pago)
+        SELECT s.nro_socio_base,
+               @anio,
+               @mes,
+               SUM(ROUND(@monto_base * (1 + c.porcentaje_mod_cuota / 100.0), 2)),
+               NULL,
+               @vencimiento,
+               NULL
+        FROM SOCIO s
+        INNER JOIN CATEGORIA c
+            ON c.nombre_categoria = s.nombre_categoria
+        LEFT JOIN CUOTA_SOCIAL cs
+            ON cs.nro_socio_base = s.nro_socio_base
+           AND cs.anio = @anio
+           AND cs.mes = @mes
+        WHERE cs.nro_socio_base IS NULL
+        GROUP BY s.nro_socio_base;
+
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF XACT_STATE() <> 0
+            ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH;
+END;
+GO
+
+-- VW_TITULARES_DEUDA_ANIO_ACTUAL
+-- titulares de grupos con cuotas sociales adeudadas del año en curso,
+-- con el importe total adeudado y la cantidad de integrantes del grupo.
+-- La deuda no se almacena: es monto_a_pagar - monto_abonado
+CREATE OR ALTER VIEW VW_TITULARES_DEUDA_ANIO_ACTUAL
+AS
+SELECT t.nro_socio_base,
+       t.nombre AS nombre_titular,
+       deuda.importe_adeudado,
+       integrantes.cantidad_integrantes
+FROM (
+    SELECT nro_socio_base,
+           SUM(monto_a_pagar - ISNULL(monto_abonado, 0)) AS importe_adeudado
+    FROM CUOTA_SOCIAL
+    WHERE anio = YEAR(GETDATE())
+    GROUP BY nro_socio_base
+    HAVING SUM(monto_a_pagar - ISNULL(monto_abonado, 0)) > 0
+) deuda
+INNER JOIN SOCIO t
+    ON t.nro_socio_base = deuda.nro_socio_base
+   AND t.nro_orden = 0
+INNER JOIN (
+    SELECT nro_socio_base,
+           COUNT(*) AS cantidad_integrantes
+    FROM SOCIO
+    GROUP BY nro_socio_base
+) integrantes
+    ON integrantes.nro_socio_base = deuda.nro_socio_base;
+GO
+
+---------------------------------------------------------------------
+------------------------SECCION Integrante 3-------------------------
+---------------------------------------------------------------------
 -- Jerarquía de ACTIVIDAD
 -- Coherencia: la subentidad sólo admite actividades de su tipo. Eso garantiza también la exclusividad.
 -- Totalidad: SP_ALTA_ACTIVIDAD_* crean la actividad y su subentidad juntas.
@@ -734,6 +652,103 @@ BEGIN
 END;
 GO
 
+---------------------------------------------------------------------
+------------------------SECCION Integrante 5-------------------------
+---------------------------------------------------------------------
+-- VW_CONFLICTOS_DICTADO
+-- un área o un profesional no puede estar en dos dictados que coincidan en día, horario y período.
+-- Lista los pares de dictados en conflicto. Los triggers de cronograma consultan esta vista.
+CREATE OR ALTER VIEW VW_CONFLICTOS_DICTADO
+AS
+WITH coincidencias_dia_horario AS (
+    SELECT DISTINCT d1.cod_dictado AS cod_dictado_1,
+                    d2.cod_dictado AS cod_dictado_2
+    FROM DICTADO d1
+    INNER JOIN DICTADO d2
+        ON d2.cod_dictado > d1.cod_dictado
+    INNER JOIN DICTADO_DIA x
+        ON x.cod_dictado = d1.cod_dictado
+    INNER JOIN DICTADO_DIA y
+        ON y.cod_dictado = d2.cod_dictado
+       AND y.dia_semana = x.dia_semana
+    WHERE d1.fecha_desde <= d2.fecha_fin
+      AND d2.fecha_desde <= d1.fecha_fin
+      AND d1.hora_inicio < d2.hora_fin
+      AND d2.hora_inicio < d1.hora_fin
+)
+SELECT c.cod_dictado_1,
+       c.cod_dictado_2
+FROM coincidencias_dia_horario c
+INNER JOIN SE_DESARROLLA_EN x
+    ON x.cod_dictado = c.cod_dictado_1
+INNER JOIN SE_DESARROLLA_EN y
+    ON y.cod_dictado = c.cod_dictado_2
+   AND y.cod_area = x.cod_area
+UNION
+SELECT c.cod_dictado_1,
+       c.cod_dictado_2
+FROM coincidencias_dia_horario c
+INNER JOIN A_CARGO_DE x
+    ON x.cod_dictado = c.cod_dictado_1
+INNER JOIN A_CARGO_DE y
+    ON y.cod_dictado = c.cod_dictado_2
+   AND y.dni = x.dni;
+GO
+
+
+-- Los triggers de profesional habilitado y área apta (TR_A_CARGO_DE_PROF_HABILITADO y
+-- TR_SE_DESARROLLA_EN_AREA_APTA).
+
+
+-- TR_DICTADO_SOLAPAMIENTO (una por tabla que participa del conflicto)
+-- sin solapamiento de día, horario y período para áreas y profesionales.
+CREATE OR ALTER TRIGGER TR_DICTADO_SOLAPAMIENTO_DICTADO
+ON DICTADO
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF (SELECT COUNT(*) FROM VW_CONFLICTOS_DICTADO) > 0
+        THROW 50007, 'El dictado se solapa con otro en día, horario y período, con un área o profesional en común.', 1;
+END;
+GO
+
+CREATE OR ALTER TRIGGER TR_DICTADO_SOLAPAMIENTO_DICTADO_DIA
+ON DICTADO_DIA
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF (SELECT COUNT(*) FROM VW_CONFLICTOS_DICTADO) > 0
+        THROW 50007, 'El dictado se solapa con otro en día, horario y período, con un área o profesional en común.', 1;
+END;
+GO
+
+CREATE OR ALTER TRIGGER TR_DICTADO_SOLAPAMIENTO_A_CARGO_DE
+ON A_CARGO_DE
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF (SELECT COUNT(*) FROM VW_CONFLICTOS_DICTADO) > 0
+        THROW 50007, 'El dictado se solapa con otro en día, horario y período, con un área o profesional en común.', 1;
+END;
+GO
+
+CREATE OR ALTER TRIGGER TR_DICTADO_SOLAPAMIENTO_SE_DESARROLLA_EN
+ON SE_DESARROLLA_EN
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF (SELECT COUNT(*) FROM VW_CONFLICTOS_DICTADO) > 0
+        THROW 50007, 'El dictado se solapa con otro en día, horario y período, con un área o profesional en común.', 1;
+END;
+GO
 
 -- SP_ALTA_DICTADO
 -- crea un dictado con un día, un profesional a cargo y un área, en una transacción.
