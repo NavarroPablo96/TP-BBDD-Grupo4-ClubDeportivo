@@ -3,12 +3,10 @@ GO
 
 -- Triggers de profesionales y áreas de los dictados, SP y vistas del historial de estados de las áreas
 -- y regla del estado operativo (un dictado sólo en un área operativa durante todo su período).
--- Se pueden volver a crear con CREATE OR ALTER.
--- Se ejecuta después de 03 y antes de 05, porque los datos de prueba de 05 verifican su rechazo.
 
 
 -- TR_A_CARGO_DE_PROF_HABILITADO
--- §4.2: todo profesional a cargo de un dictado debe poder desempeñarse en la actividad de ese dictado.
+-- todo profesional a cargo de un dictado debe poder desempeñarse en la actividad de ese dictado.
 CREATE OR ALTER TRIGGER TR_A_CARGO_DE_PROF_HABILITADO
 ON A_CARGO_DE
 AFTER INSERT, UPDATE
@@ -34,7 +32,7 @@ GO
 
 
 -- TR_SE_DESARROLLA_EN_AREA_APTA
--- §4.2: toda área en la que se desarrolla un dictado debe ser apta para la actividad de ese dictado.
+-- toda área en la que se desarrolla un dictado debe ser apta para la actividad de ese dictado.
 CREATE OR ALTER TRIGGER TR_SE_DESARROLLA_EN_AREA_APTA
 ON SE_DESARROLLA_EN
 AFTER INSERT, UPDATE
@@ -59,10 +57,10 @@ END;
 GO
 
 
--- Historial de estados de mantenimiento de las áreas (pendientes_diseno.md TODO 3).
+-- Historial de estados de mantenimiento de las áreas
 -- Que un área tiene un único estado por fecha lo garantiza la PK de HISTORIAL_AREA_ESTADO y que el estado
 -- exista en el catálogo, la FK a ESTADO_AREA.
--- Limitación: que todo área tenga al menos un estado (§4.1) sólo lo garantiza SP_ALTA_AREA; un INSERT directo
+-- Limitación: que todo área tenga al menos un estado sólo lo garantiza SP_ALTA_AREA; un INSERT directo
 -- en AREA lo saltea y el área figura sin estado en VW_ESTADO_ACTUAL_AREA.
 
 -- SP_ALTA_AREA
@@ -149,7 +147,7 @@ LEFT JOIN (
 GO
 
 
--- Regla del estado operativo (hipótesis del grupo, no está en el enunciado; pendientes_diseno.md TODO 13):
+-- Regla del estado operativo
 -- un dictado sólo puede desarrollarse en un área que esté 'Operativa' durante todo su período.
 -- Un área sin historial de estados (cargada con un INSERT directo en AREA) no se restringe.
 
