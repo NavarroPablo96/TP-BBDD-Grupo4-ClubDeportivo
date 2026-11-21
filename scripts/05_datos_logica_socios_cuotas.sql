@@ -181,15 +181,16 @@ SET monto_abonado = 2000.00,
     fecha_pago = DATEFROMPARTS(@anio, 2, 16)
 WHERE nro_socio_base = @id_a AND cod_actividad = 301 AND nro_cuota = 2;
 
+---------------------------------------------------------------------
+---------SECCION 9 CONSULTAS Y VERIFICACIÓN DE RESULTADOS------------
+---------------------------------------------------------------------
+
+
 -- Resultado esperado: 8000.00 (3000 de la cuota 2 + 5000 de la cuota 3)
 SELECT SUM(monto_a_pagar - ISNULL(monto_abonado, 0)) AS deuda_arancel_marta
 FROM CUOTA_ARANCEL
 WHERE nro_socio_base = @id_a AND cod_actividad = 301;
 GO
-
----------------------------------------------------------------------
----------SECCION 9 CONSULTAS Y VERIFICACIÓN DE RESULTADOS------------
----------------------------------------------------------------------
 
 -- Resultados esperados:
 --   VW_TITULARES_DEUDA_ANIO_ACTUAL: Juan Perez 121500.00 (3); Carlos Gomez 90000.00 (2); Sofia Rodriguez 45000.00 (1);

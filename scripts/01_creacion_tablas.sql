@@ -25,6 +25,9 @@ DROP TABLE IF EXISTS VALOR_CUOTA_SOCIAL;
 DROP TABLE IF EXISTS CATEGORIA;
 GO
 
+---------------------------------------------------------------------
+------------------------SECCION Integrante 1-------------------------
+---------------------------------------------------------------------
 
 -- CATEGORIA (nombre_categoria, porcentaje_mod_cuota) 
 -- PK = CK = {nombre_categoria}
@@ -83,6 +86,10 @@ CREATE TABLE SOCIO(
 );
 GO
 
+---------------------------------------------------------------------
+------------------------SECCION Integrante 2-------------------------
+---------------------------------------------------------------------
+
 --VALOR_CUOTA_SOCIAL (fecha_desde, fecha_hasta, monto_base) PK = CK = {fecha_desde}
 CREATE TABLE VALOR_CUOTA_SOCIAL(
     fecha_desde DATE NOT NULL,
@@ -134,6 +141,10 @@ CREATE TABLE CUOTA_SOCIAL(
 
 );
 GO
+
+---------------------------------------------------------------------
+------------------------SECCION Integrante 3-------------------------
+---------------------------------------------------------------------
 
 --ACTIVIDAD (cod_actividad, nombre, tipo)
 -- PK = CK = {cod_actividad}
@@ -212,6 +223,10 @@ CREATE TABLE HABILITADA_PARA(
 );
 GO
 
+---------------------------------------------------------------------
+------------------------SECCION Integrante 4-------------------------
+---------------------------------------------------------------------
+
 -- INSCRIPCION (nro_socio_base, nro_orden, cod_actividad, fecha_inscripcion, estado, fecha_baja)
 -- PK = CK = {(nro_socio_base, nro_orden, cod_actividad, fecha_inscripcion)} FK = {(nro_socio_base, nro_orden), cod_actividad}
 -- La PK incluye fecha_inscripcion para permitir reinscribirse tras una baja.
@@ -247,22 +262,50 @@ CREATE TABLE INSCRIPCION(
 );
 GO
 
--- PROFESIONAL (dni, nombre, domicilio, telefono, titulo)
--- PK = CK = {dni}
-CREATE TABLE PROFESIONAL(
-    dni INT NOT NULL,
-    nombre VARCHAR(50) NOT NULL,
-    domicilio VARCHAR(100) NOT NULL,
-    telefono VARCHAR(20) NOT NULL,
-    titulo VARCHAR(50) NOT NULL,
 
-    -- Clave primaria
-    CONSTRAINT PK_PROFESIONAL PRIMARY KEY (dni),
+-- CUOTA ARANCEL esto es la agregación de SE_INSCRIBE
+-- CUOTA_ARANCEL (nro_socio_base, nro_orden, cod_actividad, fecha_inscripcion, nro_cuota, monto_a_pagar, fecha_vencimiento, monto_abonado, fecha_pago)
+-- PK = CK = {(nro_socio_base, nro_orden, cod_actividad, fecha_inscripcion, nro_cuota)}
+-- FK = {(nro_socio_base, nro_orden, cod_actividad, fecha_inscripcion)}
+CREATE TABLE CUOTA_ARANCEL(
+    nro_socio_base INT NOT NULL,
+    nro_orden INT NOT NULL,
+    cod_actividad INT NOT NULL,
+    fecha_inscripcion DATE NOT NULL,
+    nro_cuota INT NOT NULL,
 
-    -- Validación DNI: numérico positivo (la unicidad la da la PK)
-    CONSTRAINT CK_PROFESIONAL_DNI CHECK (dni > 0)
+    monto_a_pagar DECIMAL(15,2) NOT NULL,
+    fecha_vencimiento DATE NOT NULL,
+    monto_abonado DECIMAL(15,2),
+    fecha_pago DATE,
+
+    -- Clave primaria compuesta
+    CONSTRAINT PK_CUOTA_ARANCEL
+        PRIMARY KEY (nro_socio_base, nro_orden, cod_actividad, fecha_inscripcion, nro_cuota),
+
+    -- Clave foránea hacia la agregación INSCRIPCION
+    CONSTRAINT FK_CUOTA_ARANCEL_INSCRIPCION
+        FOREIGN KEY (nro_socio_base,nro_orden,cod_actividad,fecha_inscripcion)
+        REFERENCES INSCRIPCION(nro_socio_base,nro_orden,cod_actividad,fecha_inscripcion),
+
+    -- Validación del número de cuota
+    CONSTRAINT CK_CUOTA_ARANCEL_NRO_CUOTA
+        CHECK (nro_cuota > 0),
+
+    -- Validación de importes
+    CONSTRAINT CK_CUOTA_ARANCEL_IMPORTES
+        CHECK ( monto_a_pagar >= 0 AND (monto_abonado IS NULL OR monto_abonado >= 0)),
+
+    -- El monto abonado no puede superar el monto a pagar
+    CONSTRAINT CK_CUOTA_ARANCEL_ABONADO
+        CHECK (monto_abonado IS NULL OR monto_abonado <= monto_a_pagar)
 );
 GO
+
+---------------------------------------------------------------------
+------------------------SECCION Integrante 6-------------------------
+---------------------------------------------------------------------
+
 
 -- AREA (cod_area, ubicacion, capacidad)
 -- PK = CK = {cod_area}
@@ -321,25 +364,6 @@ CREATE TABLE HISTORIAL_AREA_ESTADO(
 );
 GO
 
--- PUEDE_DESEMPENIARSE_EN (dni, cod_actividad)
--- PK = CK = {(dni, cod_actividad)} FK = {dni, cod_actividad}
-CREATE TABLE PUEDE_DESEMPENIARSE_EN(
-    dni INT NOT NULL,
-    cod_actividad INT NOT NULL,
-
-    CONSTRAINT PK_PUEDE_DESEMPENIARSE_EN
-        PRIMARY KEY (dni, cod_actividad),
-
-    CONSTRAINT FK_PUEDE_DESEMPENIARSE_EN_PROFESIONAL
-        FOREIGN KEY (dni)
-        REFERENCES PROFESIONAL(dni),
-
-    CONSTRAINT FK_PUEDE_DESEMPENIARSE_EN_ACTIVIDAD
-        FOREIGN KEY (cod_actividad)
-        REFERENCES ACTIVIDAD(cod_actividad)
-);
-GO
-
 -- APTA_PARA (cod_area, cod_actividad)
 -- PK = CK = {(cod_area, cod_actividad)} FK = {cod_area, cod_actividad}
 CREATE TABLE APTA_PARA(
@@ -354,6 +378,49 @@ CREATE TABLE APTA_PARA(
         REFERENCES AREA(cod_area),
 
     CONSTRAINT FK_APTA_PARA_ACTIVIDAD
+        FOREIGN KEY (cod_actividad)
+        REFERENCES ACTIVIDAD(cod_actividad)
+);
+GO
+
+
+---------------------------------------------------------------------
+------------------------SECCION Integrante 5-------------------------
+---------------------------------------------------------------------
+
+-- PROFESIONAL (dni, nombre, domicilio, telefono, titulo)
+-- PK = CK = {dni}
+CREATE TABLE PROFESIONAL(
+    dni INT NOT NULL,
+    nombre VARCHAR(50) NOT NULL,
+    domicilio VARCHAR(100) NOT NULL,
+    telefono VARCHAR(20) NOT NULL,
+    titulo VARCHAR(50) NOT NULL,
+
+    -- Clave primaria
+    CONSTRAINT PK_PROFESIONAL PRIMARY KEY (dni),
+
+    -- Validación DNI: numérico positivo (la unicidad la da la PK)
+    CONSTRAINT CK_PROFESIONAL_DNI CHECK (dni > 0)
+);
+GO
+
+
+
+-- PUEDE_DESEMPENIARSE_EN (dni, cod_actividad)
+-- PK = CK = {(dni, cod_actividad)} FK = {dni, cod_actividad}
+CREATE TABLE PUEDE_DESEMPENIARSE_EN(
+    dni INT NOT NULL,
+    cod_actividad INT NOT NULL,
+
+    CONSTRAINT PK_PUEDE_DESEMPENIARSE_EN
+        PRIMARY KEY (dni, cod_actividad),
+
+    CONSTRAINT FK_PUEDE_DESEMPENIARSE_EN_PROFESIONAL
+        FOREIGN KEY (dni)
+        REFERENCES PROFESIONAL(dni),
+
+    CONSTRAINT FK_PUEDE_DESEMPENIARSE_EN_ACTIVIDAD
         FOREIGN KEY (cod_actividad)
         REFERENCES ACTIVIDAD(cod_actividad)
 );
@@ -449,44 +516,5 @@ CREATE TABLE SE_DESARROLLA_EN(
     CONSTRAINT FK_SE_DESARROLLA_EN_AREA
         FOREIGN KEY (cod_area)
         REFERENCES AREA(cod_area)
-);
-GO
-
--- CUOTA ARANCEL esto es la agregación de SE_INSCRIBE
--- CUOTA_ARANCEL (nro_socio_base, nro_orden, cod_actividad, fecha_inscripcion, nro_cuota, monto_a_pagar, fecha_vencimiento, monto_abonado, fecha_pago)
--- PK = CK = {(nro_socio_base, nro_orden, cod_actividad, fecha_inscripcion, nro_cuota)}
--- FK = {(nro_socio_base, nro_orden, cod_actividad, fecha_inscripcion)}
-CREATE TABLE CUOTA_ARANCEL(
-    nro_socio_base INT NOT NULL,
-    nro_orden INT NOT NULL,
-    cod_actividad INT NOT NULL,
-    fecha_inscripcion DATE NOT NULL,
-    nro_cuota INT NOT NULL,
-
-    monto_a_pagar DECIMAL(15,2) NOT NULL,
-    fecha_vencimiento DATE NOT NULL,
-    monto_abonado DECIMAL(15,2),
-    fecha_pago DATE,
-
-    -- Clave primaria compuesta
-    CONSTRAINT PK_CUOTA_ARANCEL
-        PRIMARY KEY (nro_socio_base, nro_orden, cod_actividad, fecha_inscripcion, nro_cuota),
-
-    -- Clave foránea hacia la agregación INSCRIPCION
-    CONSTRAINT FK_CUOTA_ARANCEL_INSCRIPCION
-        FOREIGN KEY (nro_socio_base,nro_orden,cod_actividad,fecha_inscripcion)
-        REFERENCES INSCRIPCION(nro_socio_base,nro_orden,cod_actividad,fecha_inscripcion),
-
-    -- Validación del número de cuota
-    CONSTRAINT CK_CUOTA_ARANCEL_NRO_CUOTA
-        CHECK (nro_cuota > 0),
-
-    -- Validación de importes
-    CONSTRAINT CK_CUOTA_ARANCEL_IMPORTES
-        CHECK ( monto_a_pagar >= 0 AND (monto_abonado IS NULL OR monto_abonado >= 0)),
-
-    -- El monto abonado no puede superar el monto a pagar
-    CONSTRAINT CK_CUOTA_ARANCEL_ABONADO
-        CHECK (monto_abonado IS NULL OR monto_abonado <= monto_a_pagar)
 );
 GO
