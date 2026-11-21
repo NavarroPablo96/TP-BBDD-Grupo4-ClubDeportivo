@@ -1,0 +1,227 @@
+{
+  "main": {
+    "id": "46fb35b506bd13b0",
+    "type": "split",
+    "children": [
+      {
+        "id": "a2dc3de13e782d8d",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "ab4475c4e62c7bd4",
+            "type": "leaf",
+            "state": {
+              "type": "empty",
+              "state": {},
+              "icon": "lucide-file",
+              "title": "Nueva pestaña"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "0ec9c6c668fea0f9",
+    "type": "split",
+    "children": [
+      {
+        "id": "46bb22308cef3916",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "b4e129e90ad2e004",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Explorador de archivos"
+            }
+          },
+          {
+            "id": "fb416c40fc78857d",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Buscar"
+            }
+          },
+          {
+            "id": "0743a33511ff391f",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-bookmark",
+              "title": "Marcadores"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "4aa0ffd0013a4dca",
+    "type": "split",
+    "children": [
+      {
+        "id": "538f173b2af778a7",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "568697f211abc963",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Enlaces entrantes"
+            }
+          },
+          {
+            "id": "dcf95669809ac7e9",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Enlaces salientes"
+            }
+          },
+          {
+            "id": "759d912c5dc68b50",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Etiquetas"
+            }
+          },
+          {
+            "id": "3dad8dd85c68027a",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "Todas las propiedades"
+            }
+          },
+          {
+            "id": "de35d93c24b7c3aa",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Esquema"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Abrir selector rápido": false,
+      "graph:Abrir vista gráfica": false,
+      "canvas:Crear nuevo lienzo": false,
+      "daily-notes:Abrir la nota de hoy": false,
+      "templates:Insertar plantilla": false,
+      "command-palette:Abrir paleta de comandos": false,
+      "bases:Crear nueva base": false
+    }
+  },
+  "active": "ab4475c4e62c7bd4",
+  "lastOpenFiles": [
+    "README.md",
+    "Codigo/CODIGO.md",
+    "Codigo/05_datos_logica_socios_cuota_sql.md",
+    "Codigo/Archivo 04/04_logica_areas_profesionales_sql.md",
+    "Codigo/Archivo 04/i5 04_logica_areas_profesionales.md",
+    "Codigo/Archivo 04/Comun i6 i5 04_logica_areas_profesionales.md",
+    "Codigo/Archivo 04/i6 04_logica_areas_profesionales.md",
+    "Codigo/Archivo 03/03_logica_socios_cuotas_sql.md",
+    "Codigo/Archivo 03/i6 03_logica_socios_cuota_sql.md",
+    "Codigo/Archivo 03/i5 03_logica_socios_cuota_sql.md",
+    "Codigo/Archivo 03/i3 03_logica_socios_cuota_sql.md",
+    "Codigo/Archivo 03/i4 03_logica_socios_cuota_sql.md",
+    "Codigo/Archivo 03/i2 03_logica_socios_cuota_sql.md",
+    "Codigo/Archivo 03/i1 Comun i4 03_logica_socios_cuota_sql.md",
+    "Codigo/Archivo 03/i1 03_logica_socios_cuota_sql.md",
+    "Codigo/Archivo 02/02_insercion_datos_sql.md",
+    "Codigo/Archivo 01/01_creacion_tablas_sql.md",
+    "Codigo/Archivo 01/i6. 01_creacion_tablas.md",
+    "Codigo/Archivo 01/i5. 01_creacion_tablas.md",
+    "Codigo/Archivo 01/i4. 01_creacion_tablas.md",
+    "Codigo/Archivo 01/i3. 01_creacion_tablas.md",
+    "Codigo/Archivo 01/i2. 01_creacion_tablas.md",
+    "Codigo/Archivo 01/i1. 01_creacion_tablas.md",
+    "Codigo/00_creacion_bd_sql.md",
+    "MR/MR division.md",
+    "DER/DER completo.md",
+    "CONSIGNA/TP A-2c 2026-UNMdP - BDyDBD.pdf",
+    "Documentacion.canvas",
+    "PEDIENTES/Pasted image 20261118211015.png",
+    "PEDIENTES",
+    "MR",
+    "HIPOTESIS",
+    "DER",
+    "CONSIGNA",
+    "Codigo/i5 Profesionales y Cronograma/DER/Pasted image 20261119221852.png",
+    "Codigo/i5 Profesionales y Cronograma/DER/DER Modificado 17OCT-DER - Integrante 5.png",
+    "Codigo/i5 Profesionales y Cronograma/DER",
+    "Codigo/i5 Profesionales y Cronograma",
+    "Codigo/Archivo 04",
+    "Codigo/Archivo 03"
+  ]
+}

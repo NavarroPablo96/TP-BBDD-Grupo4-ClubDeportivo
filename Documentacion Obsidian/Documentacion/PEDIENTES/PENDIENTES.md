@@ -1,6 +1,6 @@
 CONSIGNA:
 [[TP A-2c 2026-UNMdP - BDyDBD.pdf]]
-- Guíarse por la consigna.
+-  Guíarse por la consigna.
 
 
 #### CODIGO
