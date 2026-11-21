@@ -39,7 +39,6 @@ Integrante 6 (AREA, ESTADO_AREA, HISTORIAL_AREA_ESTADO, APTA_PARA)
 
 
 
----
 ## 1. Entender el modelo de datos
 **Por dónde empezar:** por las tablas y sus relaciones.
 Necesitamos entender:
@@ -71,7 +70,7 @@ El repositorio tiene cuatro partes principales:
 | [[04_logica_areas_profesionales_sql]] | Implementa lógica de áreas y profesionales.        |
 | [[05_datos_logica_socios_cuota_sql]]  | Datos y lógica adicional.                          |
 
----
+
 
 ## 3. ==Entender las operaciones principales==
 
@@ -86,7 +85,7 @@ Operaciones importantes:
 
 **Objetivo:** entender qué sucede en la base de datos cuando se realiza cada operación.
 
----
+
 
 ## 4. Entender las consultas y reglas de negocio
 
@@ -103,7 +102,7 @@ También debemos identificar las consultas específicas solicitadas por la cáte
 
 **Objetivo:** comprender qué resuelve cada elemento y por qué se implementó de esa manera.
 
----
+
 
 ## 5. Entender la aplicación
 
@@ -118,7 +117,7 @@ Necesitamos entender:
 
 **Objetivo:** entender cómo la aplicación utiliza la base de datos y qué operación permite realizar.
 
----
+
 
 ## Orden recomendado de lectura
 
