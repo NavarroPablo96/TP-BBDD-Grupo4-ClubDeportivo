@@ -26,20 +26,20 @@ Integrante 6 (AREA, ESTADO_AREA, HISTORIAL_AREA_ESTADO, APTA_PARA)
 
 # [CONSIGNA DIVISION](CONSIGNA/CONSIGNA%20DIVISION.md)
 
-# [HIPOTESIS division](HIPOTESIS\HIPOTESIS%20division.md)
+# [HIPOTESIS division](HIPOTESIS/HIPOTESIS%20division.md)
 
-# [DER completo](DER\DER%20completo.md)
+# [DER completo](DER/DER%20completo.md)
 
 * INFORME vs CODIGO, Leer antes las hipotesis,
 * Cambiar informe en caso de que no coincida con codigo.
 
-# [MR division](MR\MR%20division.md)
+# [MR division](MR/MR%20division.md)
 
 * INFORME vs CODIGO
 * Cambiar informe en caso de que no coincida con código.
   * Buscar en el codigo donde se implementan las restricciones de participación total y parcial.
 
-# [CODIGO](Codigo\CODIGO.md)
+# [CODIGO](Codigo/CODIGO.md)
 
 ## 1. Entender el modelo de datos
 
