@@ -4,17 +4,24 @@
     "type": "split",
     "children": [
       {
-        "id": "a2dc3de13e782d8d",
+        "id": "baef02396d13ea27",
         "type": "tabs",
         "children": [
           {
-            "id": "ab4475c4e62c7bd4",
+            "id": "c84a6b9ab180d5cd",
             "type": "leaf",
             "state": {
-              "type": "empty",
-              "state": {},
-              "icon": "lucide-file",
-              "title": "Nueva pestaña"
+              "type": "canvas",
+              "state": {
+                "file": "Documentacion.canvas",
+                "viewState": {
+                  "x": 260,
+                  "y": 4958.159997092075,
+                  "zoom": -4
+                }
+              },
+              "icon": "lucide-layout-dashboard",
+              "title": "Documentacion"
             }
           }
         ]
@@ -181,9 +188,11 @@
       "bases:Crear nueva base": false
     }
   },
-  "active": "ab4475c4e62c7bd4",
+  "active": "c84a6b9ab180d5cd",
   "lastOpenFiles": [
     "README.md",
+    "PEDIENTES/PENDIENTES.md",
+    "Documentacion.canvas",
     "Codigo/CODIGO.md",
     "Codigo/05_datos_logica_socios_cuota_sql.md",
     "Codigo/Archivo 04/04_logica_areas_profesionales_sql.md",
@@ -207,10 +216,7 @@
     "Codigo/Archivo 01/i2. 01_creacion_tablas.md",
     "Codigo/Archivo 01/i1. 01_creacion_tablas.md",
     "Codigo/00_creacion_bd_sql.md",
-    "MR/MR division.md",
-    "DER/DER completo.md",
     "CONSIGNA/TP A-2c 2026-UNMdP - BDyDBD.pdf",
-    "Documentacion.canvas",
     "PEDIENTES/Pasted image 20261118211015.png",
     "PEDIENTES",
     "MR",
